@@ -1,0 +1,110 @@
+import React from 'react'
+import { NavigationContainer } from '@react-navigation/native'
+import { createNativeStackNavigator } from '@react-navigation/native-stack'
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
+import ConnectScreen from '../screens/ConnectScreen'
+import HomeScreen from '../screens/HomeScreen'
+import BrowseWorkspaceScreen from '../screens/BrowseWorkspaceScreen'
+import WorkspaceScreen from '../screens/WorkspaceScreen'
+import SessionScreen from '../screens/SessionScreen'
+import FileExplorerScreen from '../screens/FileExplorerScreen'
+import SettingsScreen from '../screens/SettingsScreen'
+import { LayCodeClient } from '../api/client'
+import { ThemeMode } from '../theme'
+import { ServerConfig } from '../types'
+
+export type RootStackParamList = {
+  Connect: undefined
+  Main: undefined
+  BrowseWorkspace: undefined
+  Workspace: { directory: string; name: string }
+  Session: { projectId: string; sessionId: string }
+}
+
+export type TabParamList = {
+  Home: undefined
+  Files: undefined
+  Settings: undefined
+}
+
+interface ScreenProps {
+  themeMode: ThemeMode
+  client: LayCodeClient | null
+  config: ServerConfig | null
+  onConnect: (config: ServerConfig) => void
+  onThemeToggle: () => void
+  onDisconnect: () => void
+}
+
+const Stack = createNativeStackNavigator<RootStackParamList>()
+const Tab = createBottomTabNavigator<TabParamList>()
+
+function MainTabs({ themeMode, client, config, navigation: stackNav, onThemeToggle, onDisconnect }: ScreenProps & { navigation: any }) {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: { backgroundColor: '#1a1a2e', borderTopColor: '#2a2a3e' },
+        tabBarActiveTintColor: '#6c63ff',
+        tabBarInactiveTintColor: '#888',
+      }}
+    >
+      <Tab.Screen name="Home">
+        {() => <HomeScreen navigation={stackNav} client={client!} themeMode={themeMode} />}
+      </Tab.Screen>
+      <Tab.Screen name="Files">
+        {() => <FileExplorerScreen route={{} as any} themeMode={themeMode} client={client!} />}
+      </Tab.Screen>
+      <Tab.Screen name="Settings">
+        {() => (
+          <SettingsScreen
+            navigation={stackNav}
+            themeMode={themeMode}
+            onThemeToggle={onThemeToggle}
+            config={config}
+            onDisconnect={onDisconnect}
+          />
+        )}
+      </Tab.Screen>
+    </Tab.Navigator>
+  )
+}
+
+export default function RootNavigator({ screenProps }: { screenProps: ScreenProps }) {
+  const { themeMode, client, config, onConnect, onThemeToggle, onDisconnect } = screenProps
+
+  return (
+    <NavigationContainer>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {!client ? (
+          <Stack.Screen name="Connect">
+            {() => <ConnectScreen navigation={undefined as any} themeMode={themeMode} onConnect={onConnect} />}
+          </Stack.Screen>
+        ) : (
+          <Stack.Screen name="Main">
+            {(props) => (
+              <MainTabs
+                {...props}
+                themeMode={themeMode}
+                client={client}
+                config={config}
+                onConnect={onConnect}
+                onThemeToggle={onThemeToggle}
+                onDisconnect={onDisconnect}
+              />
+            )}
+          </Stack.Screen>
+        )}
+        <Stack.Screen name="BrowseWorkspace">
+          {(props) => <BrowseWorkspaceScreen {...props} client={client!} themeMode={themeMode} />}
+        </Stack.Screen>
+        <Stack.Screen name="Workspace">
+          {(props) => <WorkspaceScreen {...props} client={client!} themeMode={themeMode} />}
+        </Stack.Screen>
+        <Stack.Screen name="Session">
+          {(props) => <SessionScreen {...props} themeMode={themeMode} client={client!} />}
+        </Stack.Screen>
+      </Stack.Navigator>
+    </NavigationContainer>
+  )
+}
