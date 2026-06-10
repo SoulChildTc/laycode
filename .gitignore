@@ -40,6 +40,9 @@ yarn-error.*
 # TypeScript
 *.tsbuildinfo
 
+# Code analysis cache
+.codegraph/
+
 # Generated native folders
 /ios
 /android
