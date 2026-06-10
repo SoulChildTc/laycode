@@ -17,6 +17,29 @@ app.use(express.json())
 // Auth on all /opencode-api routes
 app.use('/opencode-api', createAuthMiddleware(config.token))
 
+// SSE event streams — streamed (not buffered) so SDK's event subscribers work
+function createSseHandler(path: string) {
+  return async (_req: express.Request, res: express.Response) => {
+    try {
+      const response = await fetch(`${config.opencodeUrl}${path}`)
+      res.writeHead(response.status, Object.fromEntries(response.headers))
+      const reader = response.body!.getReader()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        res.write(value)
+      }
+      res.end()
+    } catch {
+      res.status(502).end()
+    }
+  }
+}
+
+app.get('/opencode-api/event', createSseHandler('/event'))
+app.get('/opencode-api/global/event', createSseHandler('/global/event'))
+app.get('/opencode-api/api/event', createSseHandler('/api/event'))
+
 // Proxy — catch all methods on /opencode-api/* (Express 5 compatible)
 app.use('/opencode-api', createProxyHandler(config))
 
