@@ -1,0 +1,102 @@
+<h2>🎨 暗色视觉体系 — 色板</h2>
+<p class="subtitle">专为大模型聊天场景设计的深色主题色彩系统</p>
+
+<div class="section">
+  <h3>基础色板</h3>
+  <div class="options" data-multiselect>
+    <div class="option" data-choice="bg">
+      <div class="letter" style="background:#0f0f1a;color:#e8e8f0;border:2px solid #333">BG</div>
+      <div class="content">
+        <h3>background <code>#0f0f1a</code></h3>
+        <p>极深紫黑 — 聊天列表背景</p>
+      </div>
+    </div>
+    <div class="option" data-choice="surface">
+      <div class="letter" style="background:#1a1a2e;color:#e8e8f0;border:2px solid #333">SF</div>
+      <div class="content">
+        <h3>surface <code>#1a1a2e</code></h3>
+        <p>深紫灰 — AI 气泡 / 卡片背景</p>
+      </div>
+    </div>
+    <div class="option" data-choice="surface2">
+      <div class="letter" style="background:#232340;color:#e8e8f0;border:2px solid #333">S2</div>
+      <div class="content">
+        <h3>surfaceSecondary <code>#232340</code></h3>
+        <p>次级表面 — 代码块 Header / 输入框</p>
+      </div>
+    </div>
+    <div class="option" data-choice="surface3">
+      <div class="letter" style="background:#2d2d4a;color:#e8e8f0;border:2px solid #333">S3</div>
+      <div class="content">
+        <h3>surfaceTertiary <code>#2d2d4a</code></h3>
+        <p>三级表面 — 思考面板背景</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>文字层级</h3>
+  <div class="options" data-multiselect>
+    <div class="option" data-choice="text1">
+      <div class="letter" style="background:#1a1a2e;color:#e8e8f0;border:2px solid #e8e8f0">T1</div>
+      <div class="content">
+        <h3>text <code>#e8e8f0</code></h3>
+        <p>主文字 — 正文、标题、代码</p>
+      </div>
+    </div>
+    <div class="option" data-choice="text2">
+      <div class="letter" style="background:#1a1a2e;color:#8888b0;border:2px solid #8888b0">T2</div>
+      <div class="content">
+        <h3>textSecondary <code>#8888b0</code></h3>
+        <p>次级文字 — 时间戳、思考内容、描述</p>
+      </div>
+    </div>
+    <div class="option" data-choice="text3">
+      <div class="letter" style="background:#1a1a2e;color:#5c5c7a;border:2px solid #5c5c7a">T3</div>
+      <div class="content">
+        <h3>textTertiary <code>#5c5c7a</code></h3>
+        <p>弱化文字 — 行号、placeholder</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>强调与状态色</h3>
+  <div class="options" data-multiselect>
+    <div class="option" data-choice="accent">
+      <div class="letter" style="background:#6c7dff;color:#fff;border:2px solid #6c7dff">A</div>
+      <div class="content">
+        <h3>accent <code>#6c7dff</code></h3>
+        <p>主强调 — 用户气泡、链接、按钮</p>
+      </div>
+    </div>
+    <div class="option" data-choice="success">
+      <div class="letter" style="background:#4ade80;color:#0f0f1a;border:2px solid #4ade80">OK</div>
+      <div class="content">
+        <h3>success <code>#4ade80</code></h3>
+        <p>工具完成态</p>
+      </div>
+    </div>
+    <div class="option" data-choice="error">
+      <div class="letter" style="background:#f87171;color:#fff;border:2px solid #f87171">!</div>
+      <div class="content">
+        <h3>error <code>#f87171</code></h3>
+        <p>错误态</p>
+      </div>
+    </div>
+    <div class="option" data-choice="warning">
+      <div class="letter" style="background:#fbbf24;color:#0f0f1a;border:2px solid #fbbf24">⚠</div>
+      <div class="content">
+        <h3>warning <code>#fbbf24</code></h3>
+        <p>警告态</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+.option .letter { width: 44px; height: 44px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex-shrink: 0; }
+</style>

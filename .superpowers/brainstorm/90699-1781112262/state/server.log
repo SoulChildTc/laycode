@@ -1,0 +1,7 @@
+{"type":"server-started","port":64746,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:64746","screen_dir":"/Users/soulchild/code/opencode-mobile/.superpowers/brainstorm/90699-1781112262/content","state_dir":"/Users/soulchild/code/opencode-mobile/.superpowers/brainstorm/90699-1781112262/state"}
+{"type":"screen-added","file":"/Users/soulchild/code/opencode-mobile/.superpowers/brainstorm/90699-1781112262/content/color-palette.html"}
+{"type":"screen-added","file":"/Users/soulchild/code/opencode-mobile/.superpowers/brainstorm/90699-1781112262/content/components.html"}
+{"type":"screen-updated","file":"/Users/soulchild/code/opencode-mobile/.superpowers/brainstorm/90699-1781112262/content/components.html"}
+{"type":"screen-added","file":"/Users/soulchild/code/opencode-mobile/.superpowers/brainstorm/90699-1781112262/content/thinking-options.html"}
+{"type":"screen-added","file":"/Users/soulchild/code/opencode-mobile/.superpowers/brainstorm/90699-1781112262/content/dual-theme.html"}
+{"type":"server-stopped","reason":"idle timeout"}

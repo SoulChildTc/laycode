@@ -1,35 +1,61 @@
 import React from 'react'
-import { View, Text, StyleSheet } from 'react-native'
-import PartRenderer from './PartRenderer'
+import { StyleSheet, Text, View } from 'react-native'
+import ThinkingAccordion from './ThinkingAccordion'
+import ContentRenderer from './ContentRenderer'
+import ToolCallCapsule from './ToolCallCapsule'
+import type { Theme } from '../theme'
+import type { Message } from '../types'
+import { isAssistant } from '../types'
 
 interface Props {
-  message: {
-    id: string
-    role: 'user' | 'assistant'
-    parts?: any[]
-    content?: string
-  }
-  theme: any
+  message: Message
+  theme: Theme
 }
 
 export default function MessageBubble({ message, theme }: Props) {
-  const isUser = message.role === 'user'
-  const parts = message.parts || (message.content ? [{ type: 'text', text: message.content }] : [])
+  if (message.role === 'user') {
+    return (
+      <View style={styles.userContainer}>
+        <View style={[styles.userBubble, { backgroundColor: theme.userBubble }]}>
+          <Text style={[styles.userText, { color: theme.userBubbleText }]}>{message.text}</Text>
+        </View>
+      </View>
+    )
+  }
+
+  const { reasoning, content, toolCalls } = message
 
   return (
-    <View style={[styles.container, isUser ? styles.userContainer : styles.assistantContainer]}>
-      <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble, { backgroundColor: isUser ? theme.accent : theme.surface, borderColor: theme.border }]}>
-        <PartRenderer parts={parts} theme={theme} isUser={isUser} />
+    <View style={styles.assistantContainer}>
+      <View style={[styles.assistantBubble, { backgroundColor: theme.aiBubble, borderColor: theme.aiBubbleBorder }]}>
+        {/* Field 1: Reasoning */}
+        {(reasoning.isActive || !!reasoning.text) && (
+          <ThinkingAccordion text={reasoning.text} theme={theme} isThinking={reasoning.isActive} />
+        )}
+
+        {/* Field 3: Tool Calls */}
+        {toolCalls.map((tc) => (
+          <ToolCallCapsule
+            key={tc.id}
+            name={tc.name}
+            status={tc.status}
+            input={tc.input}
+            output={tc.output}
+            theme={theme}
+          />
+        ))}
+
+        {/* Field 2: Content */}
+        {!!content && <ContentRenderer content={content} theme={theme} />}
       </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { marginVertical: 4, flexDirection: 'row' },
-  userContainer: { justifyContent: 'flex-end' },
-  assistantContainer: { justifyContent: 'flex-start' },
-  bubble: { maxWidth: '85%', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1 },
-  userBubble: { borderBottomRightRadius: 4 },
-  assistantBubble: { borderBottomLeftRadius: 4 },
+  userContainer: { marginVertical: 3, flexDirection: 'row', justifyContent: 'flex-end' },
+  userBubble: { maxWidth: '80%', borderRadius: 20, borderBottomRightRadius: 6, paddingHorizontal: 16, paddingVertical: 10 },
+  userText: { fontSize: 15, lineHeight: 22 },
+  assistantContainer: { marginVertical: 3, flexDirection: 'row', justifyContent: 'flex-start' },
+  assistantBubble: { flex: 1, borderRadius: 20, borderBottomLeftRadius: 6, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10 },
 })

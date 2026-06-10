@@ -1,0 +1,145 @@
+<h2>🧩 组件视觉设计</h2>
+<p class="subtitle">ThinkingAccordion · CodeBlockWrapper · ToolCallCapsule</p>
+
+<div class="section">
+  <h3>1. ThinkingAccordion — 思考折叠面板</h3>
+  <div class="mockup">
+    <div class="mockup-header">折叠态（Streaming 完成后的默认态）</div>
+    <div class="mockup-body" style="padding:16px;font-family:-apple-system,sans-serif">
+      <div style="border:1px solid rgba(255,255,255,0.06);border-radius:10px;overflow:hidden;background:rgba(35,35,64,0.85);backdrop-filter:blur(12px);max-width:320px">
+        <div style="padding:10px 14px;flex-direction:row;align-items:center;display:flex">
+          <span style="font-size:14px;margin-right:6px">💭</span>
+          <span style="font-size:12px;font-weight:600;color:#6c7dff;flex:1">已深度思考 (8 秒)</span>
+          <span style="font-size:10px;color:#5c5c7a">▼</span>
+        </div>
+        <div style="padding:0 14px 10px 34px;font-size:12px;color:#8888b0;line-height:18px;opacity:0.7">
+          这个问题涉及到动态规划的状态转移...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup" style="margin-top:12px">
+    <div class="mockup-header">展开态（Streaming 进行中或用户手动展开）</div>
+    <div class="mockup-body" style="padding:16px;font-family:-apple-system,sans-serif">
+      <div style="border:1px solid rgba(255,255,255,0.06);border-radius:10px;overflow:hidden;background:rgba(35,35,64,0.85);backdrop-filter:blur(12px);max-width:320px">
+        <div style="padding:10px 14px;flex-direction:row;align-items:center;display:flex;border-bottom:1px solid rgba(255,255,255,0.04)">
+          <span style="font-size:14px;margin-right:6px">💭</span>
+          <span style="font-size:12px;font-weight:600;color:#6c7dff;flex:1">深度思考中...</span>
+          <span style="font-size:10px;color:#5c5c7a">▲</span>
+        </div>
+        <div style="padding:12px 14px 14px 14px">
+          <div style="font-size:13px;color:#aab;line-height:21px;font-family:ui-monospace,monospace">
+            <span>这个问题需要从两个维度分析：</span>
+            <div style="margin-top:4px">
+              <span style="opacity:0.5">│ </span><span>1. 时间复杂度: O(n log n)</span>
+            </div>
+            <div>
+              <span style="opacity:0.5">│ </span><span>2. 空间复杂度: O(n)</span>
+            </div>
+            <div style="margin-top:4px">
+              <span style="opacity:0.5">│ </span><span>采用分治策略...</span>
+            </div>
+            <span style="display:inline-block;width:6px;height:14px;background:#6c7dff;animation:blink 1s infinite;margin-left:2px;vertical-align:middle"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>2. CodeBlockWrapper — 代码块包裹组件</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="padding:16px;font-family:-apple-system,sans-serif">
+      <div style="border:1px solid #2a2a45;border-radius:10px;overflow:hidden;background:#1a1a2e;max-width:360px">
+        <div style="background:#232340;padding:8px 12px;flex-direction:row;align-items:center;display:flex">
+          <span style="font-size:11px;color:#5c5c7a;font-weight:600;flex:1">typescript</span>
+          <span style="background:rgba(255,255,255,0.06);padding:4px 10px;border-radius:6px;font-size:11px;color:#e8e8f0">📋 复制</span>
+        </div>
+        <div style="overflow-x:auto;padding:0">
+          <div style="flex-direction:row;display:flex;min-width:400px">
+            <div style="padding:12px 10px;border-right:1px solid rgba(255,255,255,0.04)">
+              <div style="font-size:11px;color:#3a3a55;line-height:20px;text-align:right;font-family:Menlo,monospace">
+                1<br>2<br>3<br>4<br>5<br>6<br>7
+              </div>
+            </div>
+            <div style="padding:12px 14px;overflow:hidden">
+              <div style="font-size:12px;line-height:20px;font-family:Menlo,monospace;white-space:pre"><span style="color:#c792ea">import</span><span style="color:#aab"> </span><span style="color:#82aaff">React</span><span style="color:#aab"> from </span><span style="color:#c3e88d">'react'</span>
+<span></span>
+<span style="color:#c792ea">function</span><span style="color:#aab"> </span><span style="color:#82aaff">App</span>() {
+<span style="color:#c792ea">  return</span> (
+    &lt;<span style="color:#f07178">View</span>&gt;
+      &lt;<span style="color:#f07178">Text</span>&gt;<span style="color:#c3e88d">Hello</span>&lt;/<span style="color:#f07178">Text</span>&gt;
+    &lt;/<span style="color:#f07178">View</span>&gt;
+  )
+}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>3. ToolCallCapsule — 工具调用胶囊</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="padding:16px;font-family:-apple-system,sans-serif">
+      <div style="display:flex;flex-direction:column;gap:8px;max-width:300px">
+
+        <div style="padding:6px 12px;border-radius:8px;flex-direction:row;align-items:center;display:flex;background:rgba(108,125,255,0.1);border:1px solid rgba(108,125,255,0.2)">
+          <span style="font-size:13px;margin-right:8px">🔍</span>
+          <span style="font-size:13px;color:#6c7dff;flex:1">正在搜索相关资料...</span>
+          <span style="width:12px;height:12px;border-radius:50%;border:2px solid #6c7dff;border-top-color:transparent;animation:spin 0.8s linear infinite;display:inline-block"></span>
+        </div>
+
+        <div style="padding:6px 12px;border-radius:8px;flex-direction:row;align-items:center;display:flex;background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.15)">
+          <span style="font-size:13px;margin-right:8px">✅</span>
+          <span style="font-size:13px;color:#4ade80;flex:1">搜索资料完成</span>
+          <span style="font-size:11px;color:rgba(74,222,128,0.6)">3 条结果</span>
+        </div>
+
+        <div style="padding:6px 12px;border-radius:8px;flex-direction:row;align-items:center;display:flex;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.15)">
+          <span style="font-size:13px;margin-right:8px">❌</span>
+          <span style="font-size:13px;color:#f87171;flex:1">搜索失败</span>
+          <span style="font-size:11px;color:rgba(248,113,113,0.6)">重试</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>4. Streaming Bubble — 流式气泡 + 打字机游标</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="padding:16px;font-family:-apple-system,sans-serif">
+      <div style="display:flex;flex-direction:column;gap:10px;max-width:340px">
+
+        <div style="justify-content:flex-end;flex-direction:row;display:flex">
+          <div style="background:#6c7dff;padding:10px 16px;border-radius:18px 18px 4px 18px;max-width:80%">
+            <div style="font-size:15px;color:#fff;line-height:22px">请分析这段代码的时间复杂度</div>
+          </div>
+        </div>
+
+        <div style="justify-content:flex-start;flex-direction:row;display:flex">
+          <div style="background:#1a1a2e;padding:10px 16px;border-radius:18px 18px 18px 4px;max-width:85%;border:1px solid #2a2a45">
+            <div style="font-size:15px;color:#e8e8f0;line-height:24px">
+              这段代码使用了嵌套循环，外层 <span style="color:#82aaff">O(n)</span>，内层 <span style="color:#82aaff">O(log n)</span>，<br>
+              因此整体时间复杂度为 <span style="font-weight:600;color:#6c7dff">O(n log n)</span>。
+              <span style="display:inline-block;width:2px;height:16px;background:#e8e8f0;animation:blink 0.8s infinite;margin-left:2px;vertical-align:text-bottom"></span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes blink { 0%,100% { opacity:1 } 50% { opacity:0 } }
+@keyframes spin { to { transform:rotate(360deg) } }
+.mockup + .mockup { margin-top: 12px; }
+</style>
