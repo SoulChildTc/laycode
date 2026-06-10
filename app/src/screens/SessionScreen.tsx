@@ -68,7 +68,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
           })),
         }
       })
-      setMessages(m)
+      setMessages(m.reverse())
     }).catch((e) => setError(`加载消息失败: ${e.message}`))
   }, [sessionId])
 
@@ -128,7 +128,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
                 if (exists && isAssistant(exists)) {
                   return prev.map((m) => m.id === msgID ? { ...m, reasoning: { text: '', isActive: true } } : m)
                 }
-                return [...prev, { id: msgID, role: 'assistant', reasoning: { text: '', isActive: true }, content: '', toolCalls: [] }]
+                return [{ id: msgID, role: 'assistant', reasoning: { text: '', isActive: true }, content: '', toolCalls: [] }, ...prev]
               })
               continue
             }
@@ -160,7 +160,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
                   copy[pendingIdx] = { id: msgID, role: 'user', text: partText }
                   return copy
                 }
-                return [...prev, { id: msgID, role: 'user', text: partText }]
+                return [{ id: msgID, role: 'user', text: partText }, ...prev]
               })
               continue
             }
@@ -199,9 +199,9 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
               const exists = prev.find((m) => m.id === messageID && isAssistant(m))
               if (!exists) {
                 if (isReasoningDelta) {
-                  return [...prev, { id: messageID, role: 'assistant', reasoning: { text: delta, isActive: true }, content: '', toolCalls: [] }]
+                  return [{ id: messageID, role: 'assistant', reasoning: { text: delta, isActive: true }, content: '', toolCalls: [] }, ...prev]
                 }
-                return [...prev, { id: messageID, role: 'assistant', reasoning: { text: '', isActive: false }, content: delta, toolCalls: [] }]
+                return [{ id: messageID, role: 'assistant', reasoning: { text: '', isActive: false }, content: delta, toolCalls: [] }, ...prev]
               }
               return prev.map((m) => {
                 if (m.id !== messageID || !isAssistant(m)) return m
@@ -240,14 +240,12 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
   }, [sessionId])
 
   const scrollToBottom = useCallback((animated = true) => {
-    flatListRef.current?.scrollToEnd({ animated })
+    flatListRef.current?.scrollToIndex({ index: 0, animated })
   }, [])
 
   const handleScroll = useCallback((e: any) => {
     const offset = e.nativeEvent.contentOffset.y
-    const contentHeight = e.nativeEvent.contentSize.height
-    const viewHeight = e.nativeEvent.layoutMeasurement.height
-    const isNearBottom = contentHeight - offset - viewHeight < 80
+    const isNearBottom = offset < 80
     if (isNearBottom !== !showScrollButton) {
       setShowScrollButton(!isNearBottom)
       Animated.spring(scrollButtonOpacity, {
@@ -267,7 +265,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
     setInput('')
 
     const userMsgId = `u-${Date.now()}`
-    setMessages((prev) => [...prev, { id: userMsgId, role: 'user', text }])
+    setMessages((prev) => [{ id: userMsgId, role: 'user', text }, ...prev])
 
     try {
       await client.client.session.promptAsync({
@@ -336,6 +334,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
 
         <FlatList
           ref={flatListRef}
+          inverted
           data={messages}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <MessageBubble message={item} theme={theme} />}
@@ -343,11 +342,12 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
           contentContainerStyle={messages.length === 0 ? styles.listEmptyContent : styles.listContent}
           onScroll={handleScroll}
           scrollEventThrottle={16}
-          onContentSizeChange={() => { if (!showScrollButton) scrollToBottom(true) }}
+          onContentSizeChange={() => {
+            if (sending && !showScrollButton) scrollToBottom(true)
+          }}
           onScrollBeginDrag={() => { isAtBottom.current = false }}
           onMomentumScrollEnd={(e) => {
-            const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent
-            isAtBottom.current = contentSize.height - contentOffset.y - layoutMeasurement.height < 40
+            isAtBottom.current = e.nativeEvent.contentOffset.y < 40
           }}
           ListEmptyComponent={renderEmpty}
           keyboardShouldPersistTaps="handled"
