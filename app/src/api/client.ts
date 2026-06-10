@@ -1,4 +1,5 @@
-import { createOpencodeClient } from '@opencode-ai/sdk/client'
+import { createOpencodeClient as createV1Client } from '@opencode-ai/sdk/client'
+import { createOpencodeClient as createV2Client } from '@opencode-ai/sdk/v2/client'
 import type { Session } from '@opencode-ai/sdk'
 import { ServerConfig } from '../types'
 
@@ -14,14 +15,21 @@ export interface BrowseResult {
 }
 
 export class LayCodeClient {
-  client: ReturnType<typeof createOpencodeClient>
+  client: ReturnType<typeof createV1Client>
+  v2: ReturnType<typeof createV2Client>
   baseUrl: string
   token: string
+  wsUrl: string
 
   constructor(config: ServerConfig) {
     this.baseUrl = `http://${config.host}:${config.port}`
     this.token = config.token
-    this.client = createOpencodeClient({
+    this.wsUrl = `ws://${config.host}:${config.port + 1}/event`
+    this.client = createV1Client({
+      baseUrl: `${this.baseUrl}/opencode-api`,
+      headers: { Authorization: `Bearer ${config.token}` },
+    })
+    this.v2 = createV2Client({
       baseUrl: `${this.baseUrl}/opencode-api`,
       headers: { Authorization: `Bearer ${config.token}` },
     })

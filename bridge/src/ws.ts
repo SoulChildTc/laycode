@@ -9,7 +9,7 @@ export function startWebSocketServer(config: BridgeConfig) {
   wss = new WebSocketServer({ server })
 
   wss.on('connection', (ws) => {
-    const sseUrl = `${config.opencodeUrl}/event`
+    const sseUrl = `${config.opencodeUrl}/global/event`
     const controller = new AbortController()
 
     const connectSSE = async () => {
