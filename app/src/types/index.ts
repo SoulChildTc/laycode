@@ -19,31 +19,38 @@ export interface Session {
   directory?: string
 }
 
-export interface Message {
+export interface ToolCall {
   id: string
-  role: 'user' | 'assistant'
-  content: string
-  parts?: MessagePart[]
-  createdAt: string
+  name: string
+  status: 'running' | 'completed' | 'error'
+  input?: any
+  output?: any
 }
 
-export type MessagePart = TextPart | CodePart | DiffPart
-
-export interface TextPart {
-  type: 'text'
+export interface AssistantMsg {
+  id: string
+  role: 'assistant'
+  reasoning: { text: string; isActive: boolean }
   content: string
+  toolCalls: ToolCall[]
 }
 
-export interface CodePart {
-  type: 'code'
-  language: string
-  content: string
+export interface UserMsg {
+  id: string
+  role: 'user'
+  text: string
 }
 
-export interface DiffPart {
-  type: 'diff'
-  file: string
-  content: string
+export type Message = UserMsg | AssistantMsg
+
+export function isAssistant(msg: Message): msg is AssistantMsg {
+  return msg.role === 'assistant'
+}
+
+export function mapToolStatus(status: string): 'running' | 'completed' | 'error' {
+  if (status === 'running' || status === 'pending') return 'running'
+  if (status === 'completed' || status === 'success') return 'completed'
+  return 'error'
 }
 
 export interface FileEntry {

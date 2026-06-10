@@ -63,7 +63,7 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
           renderItem={({ item }) => (
             <TouchableOpacity
               style={[styles.sessionItem, { borderBottomColor: theme.border }]}
-              onPress={() => navigation.navigate('Session', { projectId: item.id, sessionId: item.id })}
+              onPress={() => navigation.navigate('Session', { projectId: item.id, sessionId: item.id, title: item.title || item.id.slice(0, 8) })}
             >
               <Text style={[styles.sessionTitle, { color: theme.text }]} numberOfLines={1}>
                 💬 {item.title || item.id.slice(0, 8)}

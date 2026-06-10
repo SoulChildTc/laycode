@@ -54,6 +54,16 @@ export class LayCodeClient {
     return (res.data as any) || {}
   }
 
+  async getSession(sessionId: string): Promise<any> {
+    try {
+      const res = await fetch(`${this.baseUrl}/opencode-api/session/${sessionId}`, {
+        headers: { Authorization: `Bearer ${this.token}` },
+      })
+      if (!res.ok) return null
+      return res.json()
+    } catch { return null }
+  }
+
   async getMessages(sessionId: string) {
     const res = await this.client.session.messages({ path: { id: sessionId } })
     return (res.data as any) || []

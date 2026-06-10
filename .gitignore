@@ -52,3 +52,5 @@ yarn-error.*
 .vscode/
 *.swp
 *.swo
+
+.superpowers/
