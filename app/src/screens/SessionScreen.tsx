@@ -495,7 +495,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]} edges={['top']}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <View style={[styles.header, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
+        <View style={[styles.header, { backgroundColor: theme.background, borderBottomColor: theme.border, zIndex: 2 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Feather name="chevron-left" size={22} color={theme.text} />
           </TouchableOpacity>
