@@ -37,7 +37,8 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
         for (const w of list) {
           try {
             const list = await client.listSessionsByDirectory(w.path)
-            m[w.path] = list.length
+            const nonSubagent = list.filter((s: any) => !s.parentID)
+            m[w.path] = nonSubagent.length
           } catch { m[w.path] = 0 }
         }
         setCounts(m)

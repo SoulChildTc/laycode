@@ -25,6 +25,8 @@ export interface Session {
   title?: string
   createdAt: string
   directory?: string
+  parentID?: string
+  time?: { created: number }
 }
 
 export interface ToolCall {
