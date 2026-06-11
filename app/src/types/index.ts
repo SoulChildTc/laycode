@@ -81,3 +81,17 @@ export interface FileEntry {
   path: string
   type: 'file' | 'directory'
 }
+
+export interface Agent {
+  name: string
+  description?: string
+  mode: 'subagent' | 'primary' | 'all'
+  native?: boolean
+  hidden?: boolean
+  color?: string
+  permission: any
+  model?: ModelKey
+  variant?: string
+  prompt?: string
+  steps?: number
+}
