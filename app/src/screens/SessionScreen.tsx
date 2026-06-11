@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Animated } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform, Animated } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { LayCodeClient } from '../api/client'
 import { getTheme, ThemeMode } from '../theme'
 import MessageBubble from '../components/MessageBubble'
+import InputBar from '../components/InputBar'
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import type { Message, AssistantMsg, UserMsg, ToolCall } from '../types'
 import { mapToolStatus, isAssistant } from '../types'
 import { stripThinking } from '../utils/segmentParts'
@@ -32,6 +34,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<TextInput>(null)
   const scrollButtonOpacity = useRef(new Animated.Value(0)).current
+  const { keyboardOffset, isKeyboardOpen } = useKeyboardHeight()
 
   const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
 
@@ -305,6 +308,8 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
   )
 
   const headerTitle = sending ? 'AI 思考中...' : (sessionTitle || '对话')
+  const ContentContainer = Animated.View
+  const contentStyle = [styles.contentArea, { transform: [{ translateY: keyboardOffset }] }]
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]} edges={['top']}>
@@ -332,26 +337,38 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
           </View>
         )}
 
-        <FlatList
-          ref={flatListRef}
-          inverted
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <MessageBubble message={item} theme={theme} />}
-          style={styles.list}
-          contentContainerStyle={messages.length === 0 ? styles.listEmptyContent : styles.listContent}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          onContentSizeChange={() => {
-            if (sending && !showScrollButton) scrollToBottom(true)
-          }}
-          onScrollBeginDrag={() => { isAtBottom.current = false }}
-          onMomentumScrollEnd={(e) => {
-            isAtBottom.current = e.nativeEvent.contentOffset.y < 40
-          }}
-          ListEmptyComponent={renderEmpty}
-          keyboardShouldPersistTaps="handled"
-        />
+        <ContentContainer style={contentStyle}>
+          <FlatList
+            ref={flatListRef}
+            inverted
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <MessageBubble message={item} theme={theme} />}
+            style={styles.list}
+            contentContainerStyle={messages.length === 0 ? styles.listEmptyContent : styles.listContent}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            onContentSizeChange={() => {
+              if (sending && !showScrollButton) scrollToBottom(true)
+            }}
+            onScrollBeginDrag={() => { isAtBottom.current = false }}
+            onMomentumScrollEnd={(e) => {
+              isAtBottom.current = e.nativeEvent.contentOffset.y < 40
+            }}
+            ListEmptyComponent={renderEmpty}
+            keyboardShouldPersistTaps="handled"
+          />
+
+          <InputBar
+            input={input}
+            onChangeText={setInput}
+            onSend={handleSend}
+            sending={sending}
+            theme={theme}
+            inputRef={inputRef}
+            isKeyboardOpen={isKeyboardOpen}
+          />
+        </ContentContainer>
 
         {showScrollButton && messages.length > 0 && (
           <Animated.View style={[styles.scrollButton, { opacity: scrollButtonOpacity, backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -360,34 +377,6 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
             </TouchableOpacity>
           </Animated.View>
         )}
-
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={[styles.inputBar, { backgroundColor: theme.background }]}>
-            <View style={[styles.inputRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <TextInput
-                ref={inputRef}
-                style={[styles.input, { color: theme.text }]}
-                value={input}
-                onChangeText={setInput}
-                placeholder="给 AI 发送消息..."
-                placeholderTextColor={theme.textTertiary}
-                multiline
-                maxLength={4000}
-              />
-              <TouchableOpacity
-                style={[styles.sendButton, { backgroundColor: input.trim() && !sending ? theme.accent : theme.surfaceSecondary }, sending && styles.sendButtonDisabled]}
-                onPress={handleSend}
-                disabled={!input.trim() || sending}
-                activeOpacity={0.8}
-              >
-                {sending
-                  ? <Text style={{ color: theme.textTertiary, fontSize: 18, lineHeight: 20 }}>⋯</Text>
-                  : <Feather name="arrow-up" size={18} color={input.trim() ? '#fff' : theme.textTertiary} />
-                }
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
       </View>
     </SafeAreaView>
   )
@@ -396,6 +385,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   container: { flex: 1 },
+  contentArea: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, borderBottomWidth: 0.5 },
   backButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center' },
@@ -420,9 +410,4 @@ const styles = StyleSheet.create({
   suggestionText: { fontSize: 13 },
   scrollButton: { position: 'absolute', bottom: 80, right: 16, borderRadius: 20, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 4 },
   scrollButtonTouch: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  inputBar: { paddingHorizontal: 12, paddingVertical: 8, paddingBottom: Platform.OS === 'ios' ? 22 : 12 },
-  inputRow: { flexDirection: 'row', alignItems: 'flex-end', borderRadius: 16, borderWidth: 1, paddingLeft: 16, paddingRight: 6, paddingVertical: 6 },
-  input: { flex: 1, fontSize: 15, lineHeight: 22, maxHeight: 100, paddingVertical: 4 },
-  sendButton: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
-  sendButtonDisabled: { opacity: 0.5 },
 })
