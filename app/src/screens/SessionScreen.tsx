@@ -27,7 +27,7 @@ interface Props {
 const GREETINGS = ['有什么我可以帮你的？', '开始一段新的对话吧']
 
 export default function SessionScreen({ route, navigation, themeMode, client }: Props) {
-  const { sessionId, title: routeTitle, agents: agentsJson } = route.params || {}
+  const { sessionId, title: routeTitle, agents: agentsJson, defaultAgent } = route.params || {}
   const agentsFromParent = useMemo<Agent[]>(() => agentsJson ? JSON.parse(agentsJson) : [], [agentsJson])
   const theme = getTheme(themeMode)
   const [messages, setMessages] = useState<Message[]>([])
@@ -49,7 +49,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
   const inputRef = useRef<TextInput>(null)
   const scrollButtonOpacity = useRef(new Animated.Value(0)).current
   const { keyboardOffset, isKeyboardOpen } = useKeyboardHeight()
-  const { agents: availableAgents, currentAgent, setAgent: setCurrentAgent } = useAgents(agentsFromParent, sessionId)
+  const { agents: availableAgents, currentAgent, setAgent: setCurrentAgent } = useAgents(agentsFromParent, sessionId, defaultAgent)
 
   const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
 
