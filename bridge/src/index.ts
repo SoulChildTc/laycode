@@ -1,4 +1,5 @@
 import express from 'express'
+import morgan from 'morgan'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -13,6 +14,7 @@ const config = parseArgs()
 const app = express()
 
 app.use(express.json())
+app.use(morgan('dev'))
 
 // Auth on all /opencode-api routes
 app.use('/opencode-api', createAuthMiddleware(config.token))
