@@ -85,7 +85,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
       })
       setMessages(m.reverse())
 
-      const lastAssistant = (raw || []).find((item: any) => item.info?.role === 'assistant')
+      const lastAssistant = (raw || []).findLast((item: any) => item.info?.role === 'assistant')
       if (lastAssistant?.info?.providerID && lastAssistant?.info?.modelID) {
         setCurrentModel({
           providerID: lastAssistant.info.providerID,
@@ -102,7 +102,9 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
       if (!raw) return
       try {
         const saved: Record<string, ModelKey> = JSON.parse(raw)
-        if (saved[sessionId]) setCurrentModel(saved[sessionId])
+        if (saved[sessionId]) {
+          setCurrentModel(saved[sessionId])
+        }
       } catch {}
     }).catch(() => {})
   }, [sessionId])
