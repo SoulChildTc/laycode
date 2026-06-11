@@ -64,6 +64,10 @@ export class LayCodeClient {
     } catch { return null }
   }
 
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.client.session.delete({ path: { id: sessionId } })
+  }
+
   async getMessages(sessionId: string) {
     const res = await this.client.session.messages({ path: { id: sessionId } })
     return (res.data as any) || []

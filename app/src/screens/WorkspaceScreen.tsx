@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react'
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
+import React, { useEffect, useState, useCallback } from 'react'
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient } from '../api/client'
@@ -18,8 +18,10 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [selecting, setSelecting] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
       const list = await client.listSessionsByDirectory(directory)
@@ -27,9 +29,9 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
       setSessions(list)
     } catch {}
     setLoading(false)
-  }
+  }, [directory, client])
 
-  useEffect(() => { load() }, [directory])
+  useEffect(() => { load() }, [load])
 
   const createSession = async () => {
     setCreating(true)
@@ -40,14 +42,89 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
     setCreating(false)
   }
 
+  const enterSelection = (id: string) => {
+    setSelecting(true)
+    setSelectedIds(new Set([id]))
+  }
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const cancelSelection = () => {
+    setSelecting(false)
+    setSelectedIds(new Set())
+  }
+
+  const handleDelete = () => {
+    const count = selectedIds.size
+    if (count === 0) return
+    Alert.alert(
+      '删除会话',
+      `确定要删除选中的 ${count} 个会话吗？`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            const ids = [...selectedIds]
+            try {
+              await Promise.all(ids.map((id) => client.deleteSession(id)))
+            } catch {}
+            cancelSelection()
+            load()
+          },
+        },
+      ]
+    )
+  }
+
+  const handlePress = (item: Session) => {
+    if (selecting) {
+      toggleSelection(item.id)
+    } else {
+      navigation.navigate('Session', {
+        projectId: item.id,
+        sessionId: item.id,
+        title: item.title || item.id.slice(0, 8),
+      })
+    }
+  }
+
+  const handleLongPress = (item: Session) => {
+    if (!selecting) enterSelection(item.id)
+  }
+
+  const selectedCount = selectedIds.size
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={[styles.back, { color: theme.accent }]}>← 工作区</Text>
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{name}</Text>
-        <View style={{ width: 60 }} />
+        {selecting ? (
+          <>
+            <TouchableOpacity onPress={cancelSelection}>
+              <Text style={[styles.action, { color: theme.accent }]}>取消</Text>
+            </TouchableOpacity>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>已选 {selectedCount} 项</Text>
+            <TouchableOpacity onPress={handleDelete} disabled={selectedCount === 0}>
+              <Text style={[styles.action, { color: selectedCount > 0 ? theme.error : theme.textTertiary }]}>删除</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Text style={[styles.back, { color: theme.accent }]}>← 工作区</Text>
+            </TouchableOpacity>
+            <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{name}</Text>
+            <View style={{ width: 60 }} />
+          </>
+        )}
       </View>
 
       <TouchableOpacity style={[styles.pathBar, { backgroundColor: theme.surface }]}>
@@ -60,16 +137,27 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
         <FlatList
           data={sessions}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[styles.sessionItem, { borderBottomColor: theme.border }]}
-              onPress={() => navigation.navigate('Session', { projectId: item.id, sessionId: item.id, title: item.title || item.id.slice(0, 8) })}
-            >
-              <Text style={[styles.sessionTitle, { color: theme.text }]} numberOfLines={1}>
-                💬 {item.title || item.id.slice(0, 8)}
-              </Text>
-            </TouchableOpacity>
-          )}
+          renderItem={({ item }) => {
+            const isSelected = selecting && selectedIds.has(item.id)
+            return (
+              <TouchableOpacity
+                style={[styles.sessionItem, { borderBottomColor: theme.border }, isSelected && { backgroundColor: theme.surface }]}
+                onPress={() => handlePress(item)}
+                onLongPress={() => handleLongPress(item)}
+              >
+                <View style={styles.sessionRow}>
+                  {selecting && (
+                    <View style={[styles.checkbox, isSelected && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
+                      {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                    </View>
+                  )}
+                  <Text style={[styles.sessionTitle, { color: theme.text }]} numberOfLines={1}>
+                    💬 {item.title || item.id.slice(0, 8)}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )
+          }}
           ListEmptyComponent={
             <Text style={[styles.empty, { color: theme.textSecondary }]}>还没有会话</Text>
           }
@@ -98,11 +186,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   back: { fontSize: 16 },
+  action: { fontSize: 15, fontWeight: '500' },
   headerTitle: { fontSize: 17, fontWeight: '600', flex: 1, textAlign: 'center' },
   pathBar: { paddingHorizontal: 16, paddingVertical: 10 },
   pathText: { fontSize: 12 },
   sessionItem: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 },
-  sessionTitle: { fontSize: 15 },
+  sessionRow: { flexDirection: 'row', alignItems: 'center' },
+  sessionTitle: { fontSize: 15, flex: 1 },
+  checkbox: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#999', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  checkmark: { color: '#fff', fontSize: 13, fontWeight: '700' },
   empty: { textAlign: 'center', marginTop: 48, fontSize: 14 },
   fab: {
     position: 'absolute', bottom: 24, right: 24,
