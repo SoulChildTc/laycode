@@ -82,6 +82,21 @@ export interface FileEntry {
   type: 'file' | 'directory'
 }
 
+export interface PermissionRequest {
+  id: string
+  sessionID: string
+  permission: string
+  patterns: string[]
+  metadata: Record<string, any>
+  always: string[]
+  tool?: {
+    messageID: string
+    callID: string
+  }
+}
+
+export type PermissionReply = 'once' | 'always' | 'reject'
+
 export interface Agent {
   name: string
   description?: string

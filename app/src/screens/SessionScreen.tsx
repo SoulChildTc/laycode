@@ -7,11 +7,12 @@ import { LayCodeClient } from '../api/client'
 import { getTheme, ThemeMode } from '../theme'
 import MessageBubble from '../components/MessageBubble'
 import InputBar from '../components/InputBar'
+import PermissionPrompt from '../components/PermissionPrompt'
 import ModelSelectorModal from '../components/ModelSelectorModal'
 import AgentSelectorModal from '../components/AgentSelectorModal'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import { useAgents } from '../hooks/useAgents'
-import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider, Agent } from '../types'
+import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply } from '../types'
 import { mapToolStatus, isAssistant } from '../types'
 import { stripThinking } from '../utils/segmentParts'
 
@@ -43,6 +44,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
   const [showRenameModal, setShowRenameModal] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [agentSelectorVisible, setAgentSelectorVisible] = useState(false)
+  const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([])
   const flatListRef = useRef<FlatList>(null)
   const xhrRef = useRef<XMLHttpRequest | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -50,6 +52,13 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
   const scrollButtonOpacity = useRef(new Animated.Value(0)).current
   const { keyboardOffset, isKeyboardOpen } = useKeyboardHeight()
   const { agents: availableAgents, currentAgent, setAgent: setCurrentAgent } = useAgents(agentsFromParent, sessionId, defaultAgent)
+
+  const handlePermissionReply = useCallback(async (reply: PermissionReply, message?: string) => {
+    const req = pendingPermissions[0]
+    if (!req) return
+    const ok = await client.replyPermission(req.id, reply, message, cwd || undefined)
+    if (!ok) setError('Failed to respond to permission request')
+  }, [pendingPermissions, client, cwd])
 
   const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
 
@@ -61,6 +70,17 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
       else if (data?.info?.directory) setCwd(data.info.directory)
     }).catch(() => {})
   }, [sessionId])
+
+  useEffect(() => {
+    if (!sessionId || !cwd) return
+    client.listPendingPermissions(cwd).then((reqs) => {
+      if (reqs.length === 0) return
+      setPendingPermissions((prev) => {
+        const existing = new Set(prev.map((p) => p.id))
+        return [...prev, ...reqs.filter((r) => !existing.has(r.id))]
+      })
+    }).catch(() => {})
+  }, [sessionId, cwd])
 
   useEffect(() => {
     if (!sessionId) return
@@ -193,8 +213,11 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
               reasoningPartIds.add(part.id)
               setMessages((prev) => {
                 const exists = prev.find((m) => m.id === msgID)
-                if (exists && isAssistant(exists)) {
-                  return prev.map((m) => m.id === msgID ? { ...m, reasoning: { text: '', isActive: true } } : m)
+                if (exists) {
+                  if (isAssistant(exists)) {
+                    return prev.map((m) => m.id === msgID ? { ...m, reasoning: { text: '', isActive: true } } : m)
+                  }
+                  return prev.map((m) => m.id === msgID ? { ...m, role: 'assistant', reasoning: { text: '', isActive: true }, content: m.role === 'user' ? m.text : '', toolCalls: [] } : m)
                 }
                 const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
                 return [{ id: msgID, role: 'assistant', reasoning: { text: '', isActive: true }, content: '', toolCalls: [] }, ...filtered]
@@ -204,8 +227,10 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
 
             if (partType === 'reasoning' && partText !== '') {
               setMessages((prev) => prev.map((m) =>
-                m.id === msgID && isAssistant(m)
-                  ? { ...m, reasoning: { text: partText, isActive: false } }
+                m.id === msgID
+                  ? m.role === 'assistant'
+                    ? { ...m, reasoning: { text: partText, isActive: false } }
+                    : { ...m, role: 'assistant', reasoning: { text: partText, isActive: false }, content: m.text || '', toolCalls: [] }
                   : m
               ))
               continue
@@ -214,11 +239,14 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
             if (partType === 'text') {
               setMessages((prev) => {
                 const exists = prev.find((m) => m.id === msgID)
-                if (exists && isAssistant(exists)) {
-                  return prev.map((m) => m.id === msgID && isAssistant(m)
-                    ? { ...m, reasoning: { ...m.reasoning, isActive: false } }
-                    : m
-                  )
+                if (exists) {
+                  if (isAssistant(exists)) {
+                    return prev.map((m) => m.id === msgID && isAssistant(m)
+                      ? { ...m, reasoning: { ...m.reasoning, isActive: false } }
+                      : m
+                    )
+                  }
+                  return prev.map((m) => m.id === msgID ? { ...m, text: partText } : m)
                 }
                 const pendingIdx = prev.findIndex((m) => m.id.startsWith('u-') && m.role === 'user')
                 if (pendingIdx >= 0) {
@@ -253,31 +281,56 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
             continue
           }
 
-          if (evType === 'message.part.delta') {
-            const { messageID, partID, delta } = props
-            if (!delta || !partID || !messageID) continue
+            if (evType === 'message.part.delta') {
+              const { messageID, partID, delta } = props
+              if (!delta || !partID || !messageID) continue
 
-            const isReasoningDelta = reasoningPartIds.has(partID)
+              const isReasoningDelta = reasoningPartIds.has(partID)
 
-            setMessages((prev) => {
-              const exists = prev.find((m) => m.id === messageID && isAssistant(m))
-              if (!exists) {
-                const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
-                if (isReasoningDelta) {
-                  return [{ id: messageID, role: 'assistant', reasoning: { text: delta, isActive: true }, content: '', toolCalls: [] }, ...filtered]
+              setMessages((prev) => {
+                const anyExists = prev.find((m) => m.id === messageID)
+                if (!anyExists) {
+                  const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
+                  if (isReasoningDelta) {
+                    return [{ id: messageID, role: 'assistant', reasoning: { text: delta, isActive: true }, content: '', toolCalls: [] }, ...filtered]
+                  }
+                  return [{ id: messageID, role: 'assistant', reasoning: { text: '', isActive: false }, content: delta, toolCalls: [] }, ...filtered]
                 }
-                return [{ id: messageID, role: 'assistant', reasoning: { text: '', isActive: false }, content: delta, toolCalls: [] }, ...filtered]
-              }
-              return prev.map((m) => {
-                if (m.id !== messageID || !isAssistant(m)) return m
-                if (isReasoningDelta) {
-                  return { ...m, reasoning: { ...m.reasoning, text: m.reasoning.text + delta } }
-                }
-                return { ...m, content: m.content + delta }
+                return prev.map((m) => {
+                  if (m.id !== messageID) return m
+                  if (isReasoningDelta) {
+                    if (isAssistant(m)) {
+                      return { ...m, reasoning: { ...m.reasoning, text: m.reasoning.text + delta } }
+                    }
+                    return { ...m, role: 'assistant', reasoning: { text: delta, isActive: true }, content: m.text || '', toolCalls: [] }
+                  }
+                  if (isAssistant(m)) {
+                    return { ...m, content: m.content + delta }
+                  }
+                  return { ...m, role: 'assistant', content: (m.text || '') + delta, reasoning: { text: '', isActive: false }, toolCalls: [] }
+                })
               })
-            })
-            continue
-          }
+              continue
+            }
+
+            if (evType === 'permission.asked') {
+              const req = props as PermissionRequest
+              setPendingPermissions((prev) => {
+                const exists = prev.find((p) => p.id === req.id)
+                if (exists) return prev
+                return [...prev, req]
+              })
+              continue
+            }
+
+            if (evType === 'permission.replied') {
+              const { permissionID, requestID } = props
+              const id = requestID || permissionID
+              if (id) {
+                setPendingPermissions((prev) => prev.filter((p) => p.id !== id))
+              }
+              continue
+            }
         }
       }
 
@@ -431,6 +484,15 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
           </View>
         )}
 
+        {pendingPermissions.length > 0 && (
+          <View style={[styles.permissionBanner, { backgroundColor: theme.warning + '20', borderBottomColor: theme.warning + '40' }]}>
+            <Feather name="shield" size={14} color={theme.warning} />
+            <Text style={[styles.permissionBannerText, { color: theme.warning }]}>
+              {pendingPermissions.length} permission request{pendingPermissions.length > 1 ? 's' : ''} pending
+            </Text>
+          </View>
+        )}
+
         {messages.length === 0 ? (
           <>
             <View style={styles.emptyWrapper}>
@@ -442,6 +504,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
                 onChangeText={setInput}
                 onSend={handleSend}
                 sending={sending}
+                disabled={pendingPermissions.length > 0}
                 theme={theme}
                 inputRef={inputRef}
                 isKeyboardOpen={isKeyboardOpen}
@@ -479,6 +542,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
               onChangeText={setInput}
               onSend={handleSend}
               sending={sending}
+              disabled={pendingPermissions.length > 0}
               theme={theme}
               inputRef={inputRef}
               isKeyboardOpen={isKeyboardOpen}
@@ -490,7 +554,15 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
           </ContentContainer>
         )}
 
-        {showScrollButton && messages.length > 0 && (
+        {pendingPermissions.length > 0 && (
+        <PermissionPrompt
+          request={pendingPermissions[0]}
+          theme={theme}
+          onReply={handlePermissionReply}
+        />
+      )}
+
+      {showScrollButton && messages.length > 0 && (
           <Animated.View style={[styles.scrollButton, { opacity: scrollButtonOpacity, backgroundColor: theme.surface, borderColor: theme.border }]}>
             <TouchableOpacity onPress={() => scrollToBottom()} style={styles.scrollButtonTouch} activeOpacity={0.7}>
               <Feather name="chevron-down" size={20} color={theme.textSecondary} />
@@ -562,6 +634,8 @@ const styles = StyleSheet.create({
   headerRight: { width: 36 },
   errorBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 7 },
   errorText: { flex: 1, color: '#fff', fontSize: 13 },
+  permissionBanner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 6, gap: 6, borderBottomWidth: 1 },
+  permissionBannerText: { fontSize: 12, fontWeight: '600' },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 12, paddingVertical: 8, paddingBottom: 16 },
   emptyWrapper: { flex: 1 },

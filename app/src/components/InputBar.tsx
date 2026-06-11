@@ -9,6 +9,7 @@ interface Props {
   onChangeText: (text: string) => void
   onSend: () => void
   sending: boolean
+  disabled?: boolean
   theme: Theme
   inputRef: React.RefObject<TextInput | null>
   isKeyboardOpen: boolean
@@ -18,7 +19,7 @@ interface Props {
   onPressAgentSelector?: () => void
 }
 
-export default function InputBar({ input, onChangeText, onSend, sending, theme, inputRef, isKeyboardOpen, currentModel, onPressModelSelector, currentAgent, onPressAgentSelector }: Props) {
+export default function InputBar({ input, onChangeText, onSend, sending, disabled, theme, inputRef, isKeyboardOpen, currentModel, onPressModelSelector, currentAgent, onPressAgentSelector }: Props) {
   const bottomPad = Platform.OS === 'ios' ? (isKeyboardOpen ? 8 : 22) : 12
 
   const modelLabel = currentModel
@@ -60,13 +61,14 @@ export default function InputBar({ input, onChangeText, onSend, sending, theme, 
         </TouchableOpacity>
         <TextInput
           ref={inputRef}
-          style={[styles.input, { color: theme.text }]}
+          style={[styles.input, { color: theme.text, ...(disabled ? { opacity: 0.4 } : {}) }]}
           value={input}
           onChangeText={onChangeText}
-          placeholder="发送消息..."
+          placeholder={disabled ? 'Waiting for permission...' : '发送消息...'}
           placeholderTextColor={theme.textTertiary}
           multiline
           maxLength={4000}
+          editable={!disabled}
         />
         <TouchableOpacity
           style={[
@@ -75,7 +77,7 @@ export default function InputBar({ input, onChangeText, onSend, sending, theme, 
             sending && styles.sendButtonDisabled,
           ]}
           onPress={onSend}
-          disabled={!input.trim() || sending}
+          disabled={!input.trim() || sending || disabled}
           activeOpacity={0.8}
         >
           {sending

@@ -13,12 +13,6 @@ export function createProxyHandler(config: BridgeConfig) {
     }
 
     try {
-      if (req.path.includes('prompt_async') || req.path.includes('message')) {
-        console.log(`\n[PROXY DEBUG] ${req.method} ${req.path}`)
-        console.log(`[PROXY DEBUG] Body:`, JSON.stringify(req.body))
-        console.log(`[PROXY DEBUG] Target: ${targetUrl}\n`)
-      }
-
       const response = await fetch(targetUrl, {
         method: req.method,
         headers: {
