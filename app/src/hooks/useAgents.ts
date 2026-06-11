@@ -6,8 +6,8 @@ const AGENT_KEY = '@laycode/current-agent'
 const SESSION_AGENT_KEY = '@laycode/session-agents'
 
 const BUILTIN_COLORS: Record<string, string> = {
-  build: '#2196F3',
-  plan: '#4CAF50',
+  build: '#4CAF50',
+  plan: '#2196F3',
 }
 
 function assignAgentColor(agent: Agent, index: number): string {
@@ -20,11 +20,11 @@ function assignAgentColor(agent: Agent, index: number): string {
 export function useAgents(
   inputAgents: Agent[],
   sessionId: string | undefined,
+  defaultAgent?: string,
 ) {
   const [agents, setAgents] = useState<Agent[]>([])
   const [currentAgent, setCurrentAgent] = useState<string | undefined>(undefined)
   const loadedSessionRef = useRef<string | undefined>(undefined)
-  const loadedPersistedRef = useRef(false)
   const initializedRef = useRef(false)
 
   useEffect(() => {
@@ -36,38 +36,19 @@ export function useAgents(
     if (initializedRef.current || agents.length === 0) return
     initializedRef.current = true
 
-    const buildExists = agents.some((a) => a.name === 'build')
-    if (buildExists) {
-      setCurrentAgent((prev) => prev || 'build')
-    } else {
-      setCurrentAgent((prev) => prev || agents[0].name)
-    }
-  }, [agents])
+    ;(async () => {
+      const sessionSaved = sessionId ? await readSessionAgent(sessionId) : undefined
+      if (sessionSaved) { setCurrentAgent(sessionSaved); return }
 
-  useEffect(() => {
-    if (!sessionId || loadedSessionRef.current === sessionId) return
-    loadedSessionRef.current = sessionId
+      const globalSaved = await readGlobalAgent()
+      if (globalSaved && agents.some((a) => a.name === globalSaved)) { setCurrentAgent(globalSaved); return }
 
-    AsyncStorage.getItem(SESSION_AGENT_KEY).then((raw) => {
-      if (!raw) return
-      try {
-        const saved: Record<string, string> = JSON.parse(raw)
-        if (saved[sessionId]) {
-          setCurrentAgent(saved[sessionId])
-        }
-      } catch {}
-    }).catch(() => {})
-  }, [sessionId])
+      if (defaultAgent && agents.some((a) => a.name === defaultAgent)) { setCurrentAgent(defaultAgent); return }
 
-  useEffect(() => {
-    if (loadedPersistedRef.current || currentAgent || agents.length === 0) return
-    AsyncStorage.getItem(AGENT_KEY).then((raw) => {
-      if (raw) {
-        loadedPersistedRef.current = true
-        setCurrentAgent(raw)
-      }
-    }).catch(() => {})
-  }, [currentAgent, agents.length])
+      const buildExists = agents.some((a) => a.name === 'build')
+      setCurrentAgent(buildExists ? 'build' : agents[0].name)
+    })()
+  }, [agents, sessionId, defaultAgent])
 
   const setAgent = useCallback((name: string | undefined) => {
     setCurrentAgent(name)
@@ -86,4 +67,20 @@ export function useAgents(
   const activeAgent = agents.find((a) => a.name === currentAgent) || agents.find((a) => a.name === 'build') || agents[0]
 
   return { agents, currentAgent: activeAgent, setAgent }
+}
+
+async function readGlobalAgent(): Promise<string | undefined> {
+  try {
+    const raw = await AsyncStorage.getItem(AGENT_KEY)
+    return raw || undefined
+  } catch { return undefined }
+}
+
+async function readSessionAgent(sessionId: string): Promise<string | undefined> {
+  try {
+    const raw = await AsyncStorage.getItem(SESSION_AGENT_KEY)
+    if (!raw) return undefined
+    const saved: Record<string, string> = JSON.parse(raw)
+    return saved[sessionId]
+  } catch { return undefined }
 }

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient } from '../api/client'
 import type { Session } from '@opencode-ai/sdk'
@@ -48,8 +49,13 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
   const createSession = async () => {
     setCreating(true)
     try {
-      const session = await client.createSessionInDirectory(directory)
-      navigation.replace('Session', { projectId: session.id, sessionId: session.id, agents: JSON.stringify(agents) })
+      let savedAgent: string | undefined
+      try {
+        const raw = await AsyncStorage.getItem('@laycode/current-agent')
+        if (raw) savedAgent = raw
+      } catch {}
+      const session = await client.createSessionInDirectory(directory, savedAgent)
+      navigation.replace('Session', { projectId: session.id, sessionId: session.id, agents: JSON.stringify(agents), defaultAgent: savedAgent })
     } catch {}
     setCreating(false)
   }
