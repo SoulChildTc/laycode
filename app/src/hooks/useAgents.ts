@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { Agent } from '../types'
-
-const AGENT_KEY = '@laycode/current-agent'
-const SESSION_AGENT_KEY = '@laycode/session-agents'
+import { storageKey } from '../utils/storage'
 
 const BUILTIN_COLORS: Record<string, string> = {
   build: '#4CAF50',
@@ -21,11 +19,14 @@ export function useAgents(
   inputAgents: Agent[],
   sessionId: string | undefined,
   defaultAgent?: string,
+  serverId?: string,
 ) {
   const [agents, setAgents] = useState<Agent[]>([])
   const [currentAgent, setCurrentAgent] = useState<string | undefined>(undefined)
   const loadedSessionRef = useRef<string | undefined>(undefined)
   const initializedRef = useRef(false)
+  const agentKey = storageKey(serverId, 'current-agent')
+  const sessionAgentKey = storageKey(serverId, 'session-agents')
 
   useEffect(() => {
     if (inputAgents.length === 0) return
@@ -37,10 +38,10 @@ export function useAgents(
     initializedRef.current = true
 
     ;(async () => {
-      const sessionSaved = sessionId ? await readSessionAgent(sessionId) : undefined
+      const sessionSaved = sessionId ? await readSessionAgent(sessionAgentKey, sessionId) : undefined
       if (sessionSaved) { setCurrentAgent(sessionSaved); return }
 
-      const globalSaved = await readGlobalAgent()
+      const globalSaved = await readGlobalAgent(agentKey)
       if (globalSaved && agents.some((a) => a.name === globalSaved)) { setCurrentAgent(globalSaved); return }
 
       if (defaultAgent && agents.some((a) => a.name === defaultAgent)) { setCurrentAgent(defaultAgent); return }
@@ -53,32 +54,32 @@ export function useAgents(
   const setAgent = useCallback((name: string | undefined) => {
     setCurrentAgent(name)
     if (name) {
-      AsyncStorage.setItem(AGENT_KEY, name).catch(() => {})
+      AsyncStorage.setItem(agentKey, name).catch(() => {})
       if (sessionId) {
-        AsyncStorage.getItem(SESSION_AGENT_KEY).then((raw) => {
+        AsyncStorage.getItem(sessionAgentKey).then((raw) => {
           const all: Record<string, string> = raw ? JSON.parse(raw) : {}
           all[sessionId] = name
-          AsyncStorage.setItem(SESSION_AGENT_KEY, JSON.stringify(all)).catch(() => {})
+          AsyncStorage.setItem(sessionAgentKey, JSON.stringify(all)).catch(() => {})
         }).catch(() => {})
       }
     }
-  }, [sessionId])
+  }, [sessionId, agentKey, sessionAgentKey])
 
   const activeAgent = agents.find((a) => a.name === currentAgent) || agents.find((a) => a.name === 'build') || agents[0]
 
   return { agents, currentAgent: activeAgent, setAgent }
 }
 
-async function readGlobalAgent(): Promise<string | undefined> {
+async function readGlobalAgent(key: string): Promise<string | undefined> {
   try {
-    const raw = await AsyncStorage.getItem(AGENT_KEY)
+    const raw = await AsyncStorage.getItem(key)
     return raw || undefined
   } catch { return undefined }
 }
 
-async function readSessionAgent(sessionId: string): Promise<string | undefined> {
+async function readSessionAgent(key: string, sessionId: string): Promise<string | undefined> {
   try {
-    const raw = await AsyncStorage.getItem(SESSION_AGENT_KEY)
+    const raw = await AsyncStorage.getItem(key)
     if (!raw) return undefined
     const saved: Record<string, string> = JSON.parse(raw)
     return saved[sessionId]

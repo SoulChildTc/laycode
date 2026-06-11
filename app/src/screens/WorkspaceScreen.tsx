@@ -5,16 +5,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient } from '../api/client'
 import type { Session } from '@opencode-ai/sdk'
-import type { Agent } from '../types'
+import type { Agent, ServerEntry } from '../types'
+import { storageKey } from '../utils/storage'
 
 interface Props {
   route: any
   navigation: any
   client: LayCodeClient
   themeMode: ThemeMode
+  config: ServerEntry
 }
 
-export default function WorkspaceScreen({ route, navigation, client, themeMode }: Props) {
+export default function WorkspaceScreen({ route, navigation, client, themeMode, config }: Props) {
   const { directory, name } = route.params || {}
   const theme = getTheme(themeMode)
   const [sessions, setSessions] = useState<Session[]>([])
@@ -51,7 +53,7 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
     try {
       let savedAgent: string | undefined
       try {
-        const raw = await AsyncStorage.getItem('@laycode/current-agent')
+        const raw = await AsyncStorage.getItem(storageKey(config.id, 'current-agent'))
         if (raw) savedAgent = raw
       } catch {}
       const session = await client.createSessionInDirectory(directory, savedAgent)

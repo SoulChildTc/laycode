@@ -6,11 +6,12 @@ import {
 import { Feather } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { getTheme, ThemeMode, Theme } from '../theme'
-import type { Provider, ModelInfo, ModelKey } from '../types'
+import type { Provider, ModelInfo, ModelKey, ServerEntry } from '../types'
 import { LayCodeClient } from '../api/client'
+import { storageKey } from '../utils/storage'
 
-const FAVORITES_KEY = '@laycode/favorite-models'
-const RECENTS_KEY = '@laycode/recent-models'
+const favoritesKey = '@laycode/favorite-models'
+const recentsKey = '@laycode/recent-models'
 const MAX_RECENTS = 20
 
 interface Props {
@@ -20,6 +21,7 @@ interface Props {
   currentModel: ModelKey | null
   themeMode: ThemeMode
   client: LayCodeClient
+  config: ServerEntry
 }
 
 type Tab = 'favorites' | 'recent' | 'all'
@@ -31,7 +33,7 @@ interface FlatItem {
   model?: ModelInfo
 }
 
-export default function ModelSelectorModal({ visible, onClose, onSelect, currentModel, themeMode, client }: Props) {
+export default function ModelSelectorModal({ visible, onClose, onSelect, currentModel, themeMode, client, config }: Props) {
   const theme = getTheme(themeMode)
   const [tab, setTab] = useState<Tab>('all')
   const [search, setSearch] = useState('')
@@ -40,6 +42,8 @@ export default function ModelSelectorModal({ visible, onClose, onSelect, current
   const [recents, setRecents] = useState<ModelKey[]>([])
   const slideAnim = useRef(new Animated.Value(0)).current
   const fadeAnim = useRef(new Animated.Value(0)).current
+  const favoritesKey = storageKey(config.id, 'favorite-models')
+  const recentsKey = storageKey(config.id, 'recent-models')
 
   useEffect(() => {
     if (visible) {
@@ -59,9 +63,9 @@ export default function ModelSelectorModal({ visible, onClose, onSelect, current
   const loadData = async () => {
     client.getProviders().then((res) => setProviders(res.providers)).catch(() => {})
     try {
-      const favRaw = await AsyncStorage.getItem(FAVORITES_KEY)
+      const favRaw = await AsyncStorage.getItem(favoritesKey)
       if (favRaw) setFavorites(JSON.parse(favRaw))
-      const recRaw = await AsyncStorage.getItem(RECENTS_KEY)
+      const recRaw = await AsyncStorage.getItem(recentsKey)
       if (recRaw) setRecents(JSON.parse(recRaw))
     } catch {}
   }
@@ -95,7 +99,7 @@ export default function ModelSelectorModal({ visible, onClose, onSelect, current
       const next = exists
         ? prev.filter((f) => !(f.providerID === providerID && f.modelID === modelID))
         : [...prev, { providerID, modelID }]
-      AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(next)).catch(() => {})
+      AsyncStorage.setItem(favoritesKey, JSON.stringify(next)).catch(() => {})
       return next
     })
   }, [])
@@ -104,7 +108,7 @@ export default function ModelSelectorModal({ visible, onClose, onSelect, current
     setRecents((prev) => {
       const filtered = prev.filter((f) => !(f.providerID === providerID && f.modelID === modelID))
       const next = [{ providerID, modelID }, ...filtered].slice(0, MAX_RECENTS)
-      AsyncStorage.setItem(RECENTS_KEY, JSON.stringify(next)).catch(() => {})
+      AsyncStorage.setItem(recentsKey, JSON.stringify(next)).catch(() => {})
       return next
     })
   }, [])

@@ -12,22 +12,22 @@ import ModelSelectorModal from '../components/ModelSelectorModal'
 import AgentSelectorModal from '../components/AgentSelectorModal'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import { useAgents } from '../hooks/useAgents'
-import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply } from '../types'
+import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, ServerEntry } from '../types'
 import { mapToolStatus, isAssistant } from '../types'
 import { stripThinking } from '../utils/segmentParts'
-
-const SESSION_MODEL_KEY = '@laycode/session-models'
+import { storageKey } from '../utils/storage'
 
 interface Props {
   route: any
   navigation: any
   themeMode: ThemeMode
   client: LayCodeClient
+  config: ServerEntry
 }
 
 const GREETINGS = ['有什么我可以帮你的？', '开始一段新的对话吧']
 
-export default function SessionScreen({ route, navigation, themeMode, client }: Props) {
+export default function SessionScreen({ route, navigation, themeMode, client, config }: Props) {
   const { sessionId, title: routeTitle, agents: agentsJson, defaultAgent } = route.params || {}
   const agentsFromParent = useMemo<Agent[]>(() => agentsJson ? JSON.parse(agentsJson) : [], [agentsJson])
   const theme = getTheme(themeMode)
@@ -51,7 +51,8 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
   const inputRef = useRef<TextInput>(null)
   const scrollButtonOpacity = useRef(new Animated.Value(0)).current
   const { keyboardOffset, isKeyboardOpen } = useKeyboardHeight()
-  const { agents: availableAgents, currentAgent, setAgent: setCurrentAgent } = useAgents(agentsFromParent, sessionId, defaultAgent)
+  const sessionModelKey = storageKey(config.id, 'session-models')
+  const { agents: availableAgents, currentAgent, setAgent: setCurrentAgent } = useAgents(agentsFromParent, sessionId, defaultAgent, config.id)
 
   const handlePermissionReply = useCallback(async (reply: PermissionReply, message?: string) => {
     const req = pendingPermissions[0]
@@ -123,7 +124,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
       setProviders(res.providers)
     }).catch(() => {})
 
-    AsyncStorage.getItem(SESSION_MODEL_KEY).then((raw) => {
+    AsyncStorage.getItem(sessionModelKey).then((raw) => {
       if (!raw) return
       try {
         const saved: Record<string, ModelKey> = JSON.parse(raw)
@@ -135,10 +136,10 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
   }, [sessionId])
 
   const saveSessionModel = useCallback((key: ModelKey) => {
-    AsyncStorage.getItem(SESSION_MODEL_KEY).then((raw) => {
+    AsyncStorage.getItem(sessionModelKey).then((raw) => {
       const all: Record<string, ModelKey> = raw ? JSON.parse(raw) : {}
       all[sessionId] = key
-      AsyncStorage.setItem(SESSION_MODEL_KEY, JSON.stringify(all)).catch(() => {})
+      AsyncStorage.setItem(sessionModelKey, JSON.stringify(all)).catch(() => {})
     }).catch(() => {})
   }, [sessionId])
 
@@ -578,6 +579,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
         currentModel={currentModel}
         themeMode={themeMode}
         client={client}
+        config={config}
       />
 
       <AgentSelectorModal
