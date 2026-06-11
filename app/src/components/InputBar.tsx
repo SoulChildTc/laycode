@@ -31,7 +31,7 @@ export default function InputBar({ input, onChangeText, onSend, sending, theme, 
     ? currentAgent.name.charAt(0).toUpperCase() + currentAgent.name.slice(1)
     : 'Build'
 
-  const agentColor = currentAgent?.color || (currentAgent?.name === 'plan' ? '#2196F3' : '#4CAF50')
+  const agentColor = currentAgent?.color || '#999'
 
   return (
     <View style={[styles.inputBar, { backgroundColor: theme.background, paddingBottom: bottomPad }]}>

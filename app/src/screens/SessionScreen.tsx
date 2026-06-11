@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform, Animated, Modal, KeyboardAvoidingView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -28,7 +28,7 @@ const GREETINGS = ['有什么我可以帮你的？', '开始一段新的对话�
 
 export default function SessionScreen({ route, navigation, themeMode, client }: Props) {
   const { sessionId, title: routeTitle, agents: agentsJson } = route.params || {}
-  const agentsFromParent: Agent[] = agentsJson ? JSON.parse(agentsJson) : []
+  const agentsFromParent = useMemo<Agent[]>(() => agentsJson ? JSON.parse(agentsJson) : [], [agentsJson])
   const theme = getTheme(themeMode)
   const [messages, setMessages] = useState<Message[]>([])
   const [sessionTitle, setSessionTitle] = useState(routeTitle || sessionId?.slice(0, 8) || '')
