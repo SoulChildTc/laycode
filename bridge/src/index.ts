@@ -1,4 +1,5 @@
 import express from 'express'
+import cors from 'cors'
 import morgan from 'morgan'
 import fs from 'fs'
 import path from 'path'
@@ -13,6 +14,7 @@ import { ensureOpencode, stopOpencode } from './opencode.js'
 const config = parseArgs()
 const app = express()
 
+app.use(cors())
 app.use(express.json())
 app.use(morgan('dev'))
 
