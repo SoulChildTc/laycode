@@ -348,12 +348,25 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
           </View>
         )}
 
-        <ContentContainer style={contentStyle}>
-          {messages.length === 0 ? (
+        {messages.length === 0 ? (
+          <>
             <View style={styles.emptyWrapper}>
               {renderEmpty()}
             </View>
-          ) : (
+            <Animated.View style={{ transform: [{ translateY: keyboardOffset }] }}>
+              <InputBar
+                input={input}
+                onChangeText={setInput}
+                onSend={handleSend}
+                sending={sending}
+                theme={theme}
+                inputRef={inputRef}
+                isKeyboardOpen={isKeyboardOpen}
+              />
+            </Animated.View>
+          </>
+        ) : (
+          <ContentContainer style={contentStyle}>
             <FlatList
               ref={flatListRef}
               inverted
@@ -373,18 +386,18 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
               }}
               keyboardShouldPersistTaps="handled"
             />
-          )}
 
-          <InputBar
-            input={input}
-            onChangeText={setInput}
-            onSend={handleSend}
-            sending={sending}
-            theme={theme}
-            inputRef={inputRef}
-            isKeyboardOpen={isKeyboardOpen}
-          />
-        </ContentContainer>
+            <InputBar
+              input={input}
+              onChangeText={setInput}
+              onSend={handleSend}
+              sending={sending}
+              theme={theme}
+              inputRef={inputRef}
+              isKeyboardOpen={isKeyboardOpen}
+            />
+          </ContentContainer>
+        )}
 
         {showScrollButton && messages.length > 0 && (
           <Animated.View style={[styles.scrollButton, { opacity: scrollButtonOpacity, backgroundColor: theme.surface, borderColor: theme.border }]}>
