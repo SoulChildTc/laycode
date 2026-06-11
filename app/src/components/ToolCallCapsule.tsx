@@ -19,6 +19,7 @@ interface Props {
   resultCount?: number
   compact?: boolean
   theme: Theme
+  onPress?: () => void
 }
 
 function getColors(status: ToolStatus, theme: Theme) {
@@ -38,7 +39,7 @@ function formatValue(v: any): string {
   try { return JSON.stringify(v, null, 2) } catch { return String(v) }
 }
 
-export default function ToolCallCapsule({ name, status, input, output, resultCount, compact, theme }: Props) {
+export default function ToolCallCapsule({ name, status, input, output, resultCount, compact, theme, onPress }: Props) {
   const [expanded, setExpanded] = useState(false)
   const spinAnim = useRef(new Animated.Value(0)).current
   const expandAnim = useRef(new Animated.Value(0)).current
@@ -73,8 +74,35 @@ export default function ToolCallCapsule({ name, status, input, output, resultCou
   const arrowRotation = expandAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] })
   const detailMaxHeight = expandAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 300] })
 
+  const isTask = name === 'task'
+  const taskDescription = isTask ? input?.description || input?.prompt || '' : ''
+
   return (
     <View style={styles.wrapper}>
+      {isTask ? (
+        <TouchableOpacity
+          onPress={onPress}
+          activeOpacity={onPress ? 0.6 : 1}
+          style={[styles.taskCapsule, { backgroundColor: theme.toolSuccessBg, borderColor: theme.toolSuccessBorder }]}
+        >
+          {status === 'running' ? (
+            <Animated.View style={[styles.spinner, { borderColor: colors.text, borderTopColor: 'transparent', borderRightColor: 'transparent', transform: [{ rotate: spin }], marginRight: 8 }]} />
+          ) : (
+            <Text style={styles.taskIcon}>🤖</Text>
+          )}
+          <View style={styles.taskContent}>
+            <Text style={[styles.taskLabel, { color: theme.toolSuccessText }]}>
+              调用子 Agent · @{input?.subagent_type || 'subagent'}
+            </Text>
+            {taskDescription ? (
+              <Text style={[styles.taskDescription, { color: theme.textTertiary }]} numberOfLines={2}>
+                {taskDescription}
+              </Text>
+            ) : null}
+          </View>
+          {onPress ? <Feather name="chevron-right" size={14} color={theme.textTertiary} /> : null}
+        </TouchableOpacity>
+      ) : (
       <TouchableOpacity
         onPress={() => hasDetail && setExpanded(!expanded)}
         activeOpacity={hasDetail ? 0.7 : 1}
@@ -99,8 +127,9 @@ export default function ToolCallCapsule({ name, status, input, output, resultCou
           </Animated.Text>
         )}
       </TouchableOpacity>
+      )}
 
-      {expanded && hasDetail && (
+      {!isTask && expanded && hasDetail && (
         <View style={[styles.detailContainer, { backgroundColor: theme.codeBg, borderColor: theme.border }]}>
           {input && (
             <View style={styles.detailSection}>
@@ -166,4 +195,17 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
+  taskCapsule: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 8,
+  },
+  taskIcon: { fontSize: 16 },
+  taskContent: { flex: 1, gap: 2 },
+  taskLabel: { fontSize: 13, fontWeight: '600' },
+  taskDescription: { fontSize: 12, lineHeight: 16 },
 })

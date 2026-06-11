@@ -35,6 +35,7 @@ export interface ToolCall {
   status: 'running' | 'completed' | 'error'
   input?: any
   output?: any
+  metadata?: Record<string, any>
 }
 
 export interface AssistantMsg {

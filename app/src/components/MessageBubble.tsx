@@ -36,9 +36,10 @@ function LoadingDots({ theme }: { theme: Theme }) {
 interface Props {
   message: Message
   theme: Theme
+  onToolPress?: (toolCall: any) => void
 }
 
-export default function MessageBubble({ message, theme }: Props) {
+export default function MessageBubble({ message, theme, onToolPress }: Props) {
   if (message.role === 'user') {
     return (
       <View style={styles.userContainer}>
@@ -72,6 +73,7 @@ export default function MessageBubble({ message, theme }: Props) {
                 input={tc.input}
                 output={tc.output}
                 theme={theme}
+                onPress={onToolPress ? () => onToolPress(tc) : undefined}
               />
             ))}
             {!!content && <ContentRenderer content={content} theme={theme} />}
