@@ -1,7 +1,7 @@
 import { createOpencodeClient as createV1Client } from '@opencode-ai/sdk/client'
 import { createOpencodeClient as createV2Client } from '@opencode-ai/sdk/v2/client'
 import type { Session } from '@opencode-ai/sdk'
-import type { ServerConfig, Provider, ModelInfo } from '../types'
+import type { ServerConfig, Provider, ModelInfo, Agent } from '../types'
 
 export interface BrowseEntry {
   name: string
@@ -49,8 +49,11 @@ export class LayCodeClient {
     return (res.data as any) || []
   }
 
-  async createSessionInDirectory(directory: string): Promise<Session> {
-    const res = await this.client.session.create({ query: { directory } })
+  async createSessionInDirectory(directory: string, agent?: string): Promise<Session> {
+    const res = await this.v2.session.create({
+      directory,
+      ...(agent ? { agent } : {}),
+    })
     return (res.data as any) || {}
   }
 
@@ -82,6 +85,26 @@ export class LayCodeClient {
   async getMessages(sessionId: string) {
     const res = await this.client.session.messages({ path: { id: sessionId } })
     return (res.data as any) || []
+  }
+
+  async getAgents(directory?: string): Promise<Agent[]> {
+    console.log('Fetching agents for directory:', directory)
+    try {
+      const res = await this.v2.app.agents({ directory })
+      return (res.data as any) || []
+    } catch {
+      return []
+    }
+  }
+
+  async sendMessageWithAgent(sessionId: string, text: string, agent?: string) {
+    const body: any = { parts: [{ type: 'text' as any, text }] }
+    if (agent) body.agent = agent
+    const res = await this.client.session.promptAsync({
+      path: { id: sessionId },
+      body,
+    })
+    return (res.data as any) || {}
   }
 
   async sendMessage(sessionId: string, text: string) {

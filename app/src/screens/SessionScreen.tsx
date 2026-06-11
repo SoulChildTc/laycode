@@ -8,8 +8,10 @@ import { getTheme, ThemeMode } from '../theme'
 import MessageBubble from '../components/MessageBubble'
 import InputBar from '../components/InputBar'
 import ModelSelectorModal from '../components/ModelSelectorModal'
+import AgentSelectorModal from '../components/AgentSelectorModal'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
-import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider } from '../types'
+import { useAgents } from '../hooks/useAgents'
+import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider, Agent } from '../types'
 import { mapToolStatus, isAssistant } from '../types'
 import { stripThinking } from '../utils/segmentParts'
 
@@ -25,7 +27,8 @@ interface Props {
 const GREETINGS = ['有什么我可以帮你的？', '开始一段新的对话吧']
 
 export default function SessionScreen({ route, navigation, themeMode, client }: Props) {
-  const { sessionId, title: routeTitle } = route.params || {}
+  const { sessionId, title: routeTitle, agents: agentsJson } = route.params || {}
+  const agentsFromParent: Agent[] = agentsJson ? JSON.parse(agentsJson) : []
   const theme = getTheme(themeMode)
   const [messages, setMessages] = useState<Message[]>([])
   const [sessionTitle, setSessionTitle] = useState(routeTitle || sessionId?.slice(0, 8) || '')
@@ -39,12 +42,14 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
   const [modelSelectorVisible, setModelSelectorVisible] = useState(false)
   const [showRenameModal, setShowRenameModal] = useState(false)
   const [renameValue, setRenameValue] = useState('')
+  const [agentSelectorVisible, setAgentSelectorVisible] = useState(false)
   const flatListRef = useRef<FlatList>(null)
   const xhrRef = useRef<XMLHttpRequest | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<TextInput>(null)
   const scrollButtonOpacity = useRef(new Animated.Value(0)).current
   const { keyboardOffset, isKeyboardOpen } = useKeyboardHeight()
+  const { agents: availableAgents, currentAgent, setAgent: setCurrentAgent } = useAgents(agentsFromParent, sessionId)
 
   const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
 
@@ -348,6 +353,9 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
       if (currentModel) {
         body.model = { providerID: currentModel.providerID, modelID: currentModel.modelID }
       }
+      if (currentAgent) {
+        body.agent = currentAgent.name
+      }
       await client.client.session.promptAsync({
         path: { id: sessionId },
         body,
@@ -357,11 +365,13 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
       setError(`发送失败: ${e.message}`)
       setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-')))
     }
-  }, [input, sending, sessionId, client, currentModel])
+  }, [input, sending, sessionId, client, currentModel, currentAgent])
 
   const isAtBottom = useRef(true)
 
   const currentModelName = getModelDisplayName(currentModel)
+  const headerModelCwd = currentModelName ? `${currentModelName} · ${cwd || '对话'}` : (cwd || '对话')
+  const headerAgentName = currentAgent ? currentAgent.name.charAt(0).toUpperCase() + currentAgent.name.slice(1) : ''
 
   const renderEmpty = () => (
     <View style={styles.emptyOuter}>
@@ -388,6 +398,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
   )
 
   const headerTitle = sending ? 'AI 思考中...' : (sessionTitle || '对话')
+  const headerSubtitle = headerAgentName ? `${headerAgentName} · ${headerModelCwd}` : headerModelCwd
   const ContentContainer = Animated.View
   const contentStyle = [styles.contentArea, { transform: [{ translateY: keyboardOffset }] }]
 
@@ -403,9 +414,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
               <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{headerTitle}</Text>
             </TouchableOpacity>
             <View style={styles.statusRow}>
-              <Text style={[styles.statusText, { color: theme.textTertiary }]} numberOfLines={1}>
-                {currentModelName ? `${currentModelName} · ${cwd || '对话'}` : (cwd || '对话')}
-              </Text>
+              <Text style={[styles.statusText, { color: theme.textTertiary }]} numberOfLines={1}>{headerSubtitle}</Text>
               <View style={[styles.statusDot, { backgroundColor: sending ? theme.warning : theme.success }]} />
             </View>
           </View>
@@ -437,6 +446,8 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
                 isKeyboardOpen={isKeyboardOpen}
                 currentModel={currentModel}
                 onPressModelSelector={() => setModelSelectorVisible(true)}
+                currentAgent={currentAgent}
+                onPressAgentSelector={() => setAgentSelectorVisible(true)}
               />
             </Animated.View>
           </>
@@ -472,6 +483,8 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
               isKeyboardOpen={isKeyboardOpen}
               currentModel={currentModel}
               onPressModelSelector={() => setModelSelectorVisible(true)}
+              currentAgent={currentAgent}
+              onPressAgentSelector={() => setAgentSelectorVisible(true)}
             />
           </ContentContainer>
         )}
@@ -492,6 +505,15 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
         currentModel={currentModel}
         themeMode={themeMode}
         client={client}
+      />
+
+      <AgentSelectorModal
+        visible={agentSelectorVisible}
+        onClose={() => setAgentSelectorVisible(false)}
+        agents={availableAgents}
+        currentAgent={currentAgent}
+        onSelect={(agent) => setCurrentAgent(agent.name)}
+        theme={theme}
       />
 
       <Modal visible={showRenameModal} transparent animationType="fade" onRequestClose={() => setShowRenameModal(false)}>

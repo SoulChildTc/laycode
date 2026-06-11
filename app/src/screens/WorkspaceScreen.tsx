@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient } from '../api/client'
 import type { Session } from '@opencode-ai/sdk'
+import type { Agent } from '../types'
 
 interface Props {
   route: any
@@ -22,6 +23,7 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [agents, setAgents] = useState<Agent[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -35,11 +37,19 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    if (!directory) return
+    client.getAgents(directory).then((list) => {
+      const filtered = list.filter((a) => a.mode !== 'subagent' && !a.hidden)
+      setAgents(filtered)
+    }).catch(() => {})
+  }, [directory, client])
+
   const createSession = async () => {
     setCreating(true)
     try {
       const session = await client.createSessionInDirectory(directory)
-      navigation.replace('Session', { projectId: session.id, sessionId: session.id })
+      navigation.replace('Session', { projectId: session.id, sessionId: session.id, agents: JSON.stringify(agents) })
     } catch {}
     setCreating(false)
   }
@@ -95,6 +105,7 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
         projectId: item.id,
         sessionId: item.id,
         title: item.title || item.id.slice(0, 8),
+        agents: JSON.stringify(agents),
       })
     }
   }

@@ -2,7 +2,7 @@ import React, { useRef } from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import type { Theme } from '../theme'
-import type { ModelKey } from '../types'
+import type { ModelKey, Agent } from '../types'
 
 interface Props {
   input: string
@@ -14,9 +14,11 @@ interface Props {
   isKeyboardOpen: boolean
   currentModel: ModelKey | null
   onPressModelSelector: () => void
+  currentAgent?: Agent
+  onPressAgentSelector?: () => void
 }
 
-export default function InputBar({ input, onChangeText, onSend, sending, theme, inputRef, isKeyboardOpen, currentModel, onPressModelSelector }: Props) {
+export default function InputBar({ input, onChangeText, onSend, sending, theme, inputRef, isKeyboardOpen, currentModel, onPressModelSelector, currentAgent, onPressAgentSelector }: Props) {
   const bottomPad = Platform.OS === 'ios' ? (isKeyboardOpen ? 8 : 22) : 12
 
   const modelLabel = currentModel
@@ -25,9 +27,27 @@ export default function InputBar({ input, onChangeText, onSend, sending, theme, 
       : currentModel.modelID
     : 'model'
 
+  const agentName = currentAgent
+    ? currentAgent.name.charAt(0).toUpperCase() + currentAgent.name.slice(1)
+    : 'Build'
+
+  const agentColor = currentAgent?.color || (currentAgent?.name === 'plan' ? '#2196F3' : '#4CAF50')
+
   return (
     <View style={[styles.inputBar, { backgroundColor: theme.background, paddingBottom: bottomPad }]}>
       <View style={[styles.inputRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        {onPressAgentSelector && (
+          <TouchableOpacity
+            style={styles.agentButton}
+            onPress={onPressAgentSelector}
+            activeOpacity={0.6}
+          >
+            <View style={[styles.agentDot, { backgroundColor: agentColor }]} />
+            <Text style={[styles.agentLabel, { color: theme.textSecondary }]} numberOfLines={1}>
+              {agentName}
+            </Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={styles.modelButton}
           onPress={onPressModelSelector}
@@ -71,6 +91,17 @@ export default function InputBar({ input, onChangeText, onSend, sending, theme, 
 const styles = StyleSheet.create({
   inputBar: { paddingHorizontal: 12, paddingVertical: 8 },
   inputRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, paddingLeft: 8, paddingRight: 6, paddingVertical: 6 },
+  agentButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginRight: 2,
+    gap: 5,
+  },
+  agentDot: { width: 8, height: 8, borderRadius: 4 },
+  agentLabel: { fontSize: 12, fontWeight: '700', maxWidth: 56 },
   modelButton: {
     flexDirection: 'row',
     alignItems: 'center',
