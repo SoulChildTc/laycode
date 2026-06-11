@@ -25,6 +25,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
   const theme = getTheme(themeMode)
   const [messages, setMessages] = useState<Message[]>([])
   const [sessionTitle, setSessionTitle] = useState(routeTitle || sessionId?.slice(0, 8) || '')
+  const [cwd, setCwd] = useState('')
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,6 +43,8 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
     if (!sessionId) return
     client.getSession(sessionId).then((data: any) => {
       if (data?.info?.title) setSessionTitle(data.info.title)
+      if (data?.directory) setCwd(data.directory)
+      else if (data?.info?.directory) setCwd(data.info.directory)
     }).catch(() => {})
   }, [sessionId])
 
@@ -321,8 +324,8 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
           <View style={styles.headerCenter}>
             <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{headerTitle}</Text>
             <View style={styles.statusRow}>
+              <Text style={[styles.statusText, { color: theme.textTertiary }]} numberOfLines={1}>{cwd || '对话'}</Text>
               <View style={[styles.statusDot, { backgroundColor: sending ? theme.warning : theme.success }]} />
-              <Text style={[styles.statusText, { color: theme.textTertiary }]}>{sending ? '响应中' : '已连接'}</Text>
             </View>
           </View>
           <View style={styles.headerRight} />
@@ -396,7 +399,7 @@ const styles = StyleSheet.create({
   headerCenter: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: 16, fontWeight: '600' },
   statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
-  statusDot: { width: 5, height: 5, borderRadius: 2.5, marginRight: 4 },
+  statusDot: { width: 5, height: 5, borderRadius: 2.5, marginLeft: 4 },
   statusText: { fontSize: 11 },
   headerRight: { width: 36 },
   errorBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 7 },
