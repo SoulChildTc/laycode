@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native'
+import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient } from '../api/client'
@@ -20,6 +20,8 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
   const [creating, setCreating] = useState(false)
   const [selecting, setSelecting] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -98,8 +100,36 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
   }
 
   const handleLongPress = (item: Session) => {
-    if (!selecting) enterSelection(item.id)
+    if (selecting) return
+    Alert.alert(item.title || '会话', undefined, [
+      {
+        text: '重命名',
+        onPress: () => {
+          setRenamingId(item.id)
+          setRenameValue(item.title || '')
+        },
+      },
+      {
+        text: '选择',
+        onPress: () => enterSelection(item.id),
+      },
+      { text: '取消', style: 'cancel' },
+    ])
   }
+
+  const handleRenameSubmit = useCallback(async () => {
+    if (!renamingId || !renameValue.trim()) {
+      setRenamingId(null)
+      return
+    }
+    try {
+      await client.renameSession(renamingId, renameValue.trim())
+      setRenamingId(null)
+      load()
+    } catch {
+      setRenamingId(null)
+    }
+  }, [renamingId, renameValue, client, load])
 
   const selectedCount = selectedIds.size
 
@@ -139,9 +169,10 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => {
             const isSelected = selecting && selectedIds.has(item.id)
+            const isRenaming = renamingId === item.id
             return (
               <TouchableOpacity
-                style={[styles.sessionItem, { borderBottomColor: theme.border }, isSelected && { backgroundColor: theme.surface }]}
+                style={[styles.sessionItem, { borderBottomColor: theme.border }, (isSelected || isRenaming) && { backgroundColor: theme.surface }]}
                 onPress={() => handlePress(item)}
                 onLongPress={() => handleLongPress(item)}
               >
@@ -151,9 +182,21 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode }
                       {isSelected && <Text style={styles.checkmark}>✓</Text>}
                     </View>
                   )}
-                  <Text style={[styles.sessionTitle, { color: theme.text }]} numberOfLines={1}>
-                    💬 {item.title || item.id.slice(0, 8)}
-                  </Text>
+                  {isRenaming ? (
+                    <TextInput
+                      style={[styles.sessionTitleInput, { color: theme.text, borderBottomColor: theme.accent }]}
+                      value={renameValue}
+                      onChangeText={setRenameValue}
+                      onSubmitEditing={handleRenameSubmit}
+                      onBlur={handleRenameSubmit}
+                      autoFocus
+                      selectTextOnFocus
+                    />
+                  ) : (
+                    <Text style={[styles.sessionTitle, { color: theme.text }]} numberOfLines={1}>
+                      💬 {item.title || item.id.slice(0, 8)}
+                    </Text>
+                  )}
                 </View>
               </TouchableOpacity>
             )
@@ -193,6 +236,7 @@ const styles = StyleSheet.create({
   sessionItem: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 },
   sessionRow: { flexDirection: 'row', alignItems: 'center' },
   sessionTitle: { fontSize: 15, flex: 1 },
+  sessionTitleInput: { fontSize: 15, flex: 1, borderBottomWidth: 1, paddingVertical: 0 },
   checkbox: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#999', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   checkmark: { color: '#fff', fontSize: 13, fontWeight: '700' },
   empty: { textAlign: 'center', marginTop: 48, fontSize: 14 },
