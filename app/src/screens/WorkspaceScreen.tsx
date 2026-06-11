@@ -32,8 +32,9 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
     setLoading(true)
     try {
       const list = await client.listSessionsByDirectory(directory)
-      list.sort((a: any, b: any) => (b.time?.created || 0) - (a.time?.created || 0))
-      setSessions(list)
+      const filtered = list.filter((s: any) => !s.parentID)
+      filtered.sort((a: any, b: any) => (b.time?.created || 0) - (a.time?.created || 0))
+      setSessions(filtered)
     } catch {}
     setLoading(false)
   }, [directory, client])
