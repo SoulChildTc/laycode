@@ -7,6 +7,7 @@ import { LayCodeClient } from '../api/client'
 import { getTheme, ThemeMode } from '../theme'
 import MessageBubble from '../components/MessageBubble'
 import InputBar from '../components/InputBar'
+import SubagentFooter from '../components/SubagentFooter'
 import PermissionPrompt from '../components/PermissionPrompt'
 import ModelSelectorModal from '../components/ModelSelectorModal'
 import AgentSelectorModal from '../components/AgentSelectorModal'
@@ -54,6 +55,8 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [renameValue, setRenameValue] = useState('')
   const [agentSelectorVisible, setAgentSelectorVisible] = useState(false)
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([])
+  const [parentID, setParentID] = useState<string | null>(null)
+  const [childSessions, setChildSessions] = useState<{ id: string; title: string }[]>([])
   const flatListRef = useRef<FlatList>(null)
   const xhrRef = useRef<XMLHttpRequest | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -87,6 +90,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     if (!sessionId) return
     client.getSession(sessionId).then((data: any) => {
       if (data?.info?.title) setSessionTitle(data.info.title)
+      if (data?.info?.parentID) setParentID(data.info.parentID)
       if (data?.directory) setCwd(data.directory)
       else if (data?.info?.directory) setCwd(data.info.directory)
     }).catch(() => {})
@@ -102,6 +106,62 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       })
     }).catch(() => {})
   }, [sessionId, cwd])
+
+  useEffect(() => {
+    if (!parentID || !cwd) return
+    client.listSessionsByDirectory(cwd).then((list: any[]) => {
+      const siblings = list
+        .filter((s: any) => s.parentID === parentID)
+        .map((s: any) => ({ id: s.id, title: s.title || s.id.slice(0, 8) }))
+        .sort((a: any, b: any) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      setChildSessions(siblings)
+    }).catch(() => {})
+  }, [parentID, cwd])
+
+  const handleToolPress = useCallback((toolCall: ToolCall) => {
+    if (toolCall.name !== 'task') return
+    const childId = toolCall.metadata?.sessionId
+    if (childId) {
+      navigation.push('Session', { projectId: childId, sessionId: childId })
+      return
+    }
+    const outputMatch = typeof toolCall.output === 'string' ? toolCall.output.match(/<task id="([^"]+)"/) : null
+    if (outputMatch) {
+      navigation.push('Session', { projectId: outputMatch[1], sessionId: outputMatch[1] })
+    }
+  }, [navigation])
+
+  const subagentInfo = useMemo(() => {
+    if (!parentID || !sessionId) return null
+    const idx = childSessions.findIndex((s) => s.id === sessionId)
+    const agentMatch = sessionTitle.match(/@(\w+) subagent/)
+    const agentName = agentMatch ? agentMatch[1].charAt(0).toUpperCase() + agentMatch[1].slice(1) : 'Subagent'
+    return { agentName, currentIndex: idx + 1, totalCount: childSessions.length }
+  }, [parentID, sessionId, childSessions, sessionTitle])
+
+  const handleGoToParent = useCallback(() => {
+    if (parentID) {
+      navigation.push('Session', { projectId: parentID, sessionId: parentID })
+    }
+  }, [parentID, navigation])
+
+  const handlePrevChild = useCallback(() => {
+    if (!parentID || !sessionId) return
+    const idx = childSessions.findIndex((s) => s.id === sessionId)
+    if (idx > 0) {
+      const prev = childSessions[idx - 1]
+      navigation.replace('Session', { projectId: prev.id, sessionId: prev.id })
+    }
+  }, [parentID, sessionId, childSessions, navigation])
+
+  const handleNextChild = useCallback(() => {
+    if (!parentID || !sessionId) return
+    const idx = childSessions.findIndex((s) => s.id === sessionId)
+    if (idx < childSessions.length - 1) {
+      const next = childSessions[idx + 1]
+      navigation.replace('Session', { projectId: next.id, sessionId: next.id })
+    }
+  }, [parentID, sessionId, childSessions, navigation])
 
   useEffect(() => {
     if (!sessionId) return
@@ -130,6 +190,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             status: mapToolStatus(p.state?.status || 'completed'),
             input: p.state?.input,
             output: p.state?.output,
+            metadata: p.metadata,
           })),
         }
       })
@@ -224,8 +285,8 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           const evType: string = payload?.type || ''
           const props = payload?.properties || {}
 
-          if (evType === 'session.idle') { setSending(false); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
-          if (evType === 'session.status' && props.status?.type === 'idle') { setSending(false); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
+          if (evType === 'session.idle' && props.sessionID === sessionId) { setSending(false); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
+          if (evType === 'session.status' && props.status?.type === 'idle' && props.sessionID === sessionId) { setSending(false); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
           if (evType === 'session.error') {
             setSending(false)
             const errMsg = formatSessionError(props.error)
@@ -241,6 +302,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           if (evType === 'message.part.updated') {
             const part = props.part
             if (!part || !part.id) continue
+            if (part.sessionID !== sessionId) continue
             const msgID: string = part.messageID
             const partType: string = part.type
             const partText: string = part.text || ''
@@ -304,6 +366,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                   status: mapToolStatus(part.state?.status || 'running'),
                   input: part.state?.input,
                   output: part.state?.output,
+                  metadata: part.metadata,
                 }
                 const existing = m.toolCalls.find((t) => t.id === part.id)
                 if (existing) {
@@ -318,8 +381,9 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           }
 
             if (evType === 'message.part.delta') {
-              const { messageID, partID, delta } = props
+              const { messageID, partID, delta, sessionID: evSessionID } = props
               if (!delta || !partID || !messageID) continue
+              if (evSessionID !== sessionId) continue
 
               const isReasoningDelta = reasoningPartIds.has(partID)
 
@@ -350,6 +414,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             }
 
             if (evType === 'permission.asked') {
+              if (props.sessionID !== sessionId) continue
               const req = props as PermissionRequest
               setPendingPermissions((prev) => {
                 const exists = prev.find((p) => p.id === req.id)
@@ -360,6 +425,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             }
 
             if (evType === 'permission.replied') {
+              if (props.sessionID !== sessionId) continue
               const { permissionID, requestID } = props
               const id = requestID || permissionID
               if (id) {
@@ -534,22 +600,34 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             <View style={styles.emptyWrapper}>
               {renderEmpty()}
             </View>
-            <Animated.View style={{ transform: [{ translateY: keyboardOffset }] }}>
-              <InputBar
-                input={input}
-                onChangeText={setInput}
-                onSend={handleSend}
-                sending={sending}
-                disabled={pendingPermissions.length > 0}
+            {parentID && subagentInfo ? (
+              <SubagentFooter
                 theme={theme}
-                inputRef={inputRef}
-                isKeyboardOpen={isKeyboardOpen}
-                currentModel={currentModel}
-                onPressModelSelector={() => setModelSelectorVisible(true)}
-                currentAgent={currentAgent}
-                onPressAgentSelector={() => setAgentSelectorVisible(true)}
+                agentName={subagentInfo.agentName}
+                currentIndex={subagentInfo.currentIndex}
+                totalCount={subagentInfo.totalCount}
+                onParent={handleGoToParent}
+                onPrev={handlePrevChild}
+                onNext={handleNextChild}
               />
-            </Animated.View>
+            ) : (
+              <Animated.View style={{ transform: [{ translateY: keyboardOffset }] }}>
+                <InputBar
+                  input={input}
+                  onChangeText={setInput}
+                  onSend={handleSend}
+                  sending={sending}
+                  disabled={pendingPermissions.length > 0}
+                  theme={theme}
+                  inputRef={inputRef}
+                  isKeyboardOpen={isKeyboardOpen}
+                  currentModel={currentModel}
+                  onPressModelSelector={() => setModelSelectorVisible(true)}
+                  currentAgent={currentAgent}
+                  onPressAgentSelector={() => setAgentSelectorVisible(true)}
+                />
+              </Animated.View>
+            )}
           </>
         ) : (
           <ContentContainer style={contentStyle}>
@@ -558,7 +636,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
               inverted
               data={messages}
               keyExtractor={(item) => item.id}
-              renderItem={({ item }) => <MessageBubble message={item} theme={theme} />}
+              renderItem={({ item }) => <MessageBubble message={item} theme={theme} onToolPress={handleToolPress} />}
               style={styles.list}
               contentContainerStyle={styles.listContent}
               onScroll={handleScroll}
@@ -573,20 +651,32 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
               keyboardShouldPersistTaps="handled"
             />
 
-            <InputBar
-              input={input}
-              onChangeText={setInput}
-              onSend={handleSend}
-              sending={sending}
-              disabled={pendingPermissions.length > 0}
-              theme={theme}
-              inputRef={inputRef}
-              isKeyboardOpen={isKeyboardOpen}
-              currentModel={currentModel}
-              onPressModelSelector={() => setModelSelectorVisible(true)}
-              currentAgent={currentAgent}
-              onPressAgentSelector={() => setAgentSelectorVisible(true)}
-            />
+            {parentID && subagentInfo ? (
+              <SubagentFooter
+                theme={theme}
+                agentName={subagentInfo.agentName}
+                currentIndex={subagentInfo.currentIndex}
+                totalCount={subagentInfo.totalCount}
+                onParent={handleGoToParent}
+                onPrev={handlePrevChild}
+                onNext={handleNextChild}
+              />
+            ) : (
+              <InputBar
+                input={input}
+                onChangeText={setInput}
+                onSend={handleSend}
+                sending={sending}
+                disabled={pendingPermissions.length > 0}
+                theme={theme}
+                inputRef={inputRef}
+                isKeyboardOpen={isKeyboardOpen}
+                currentModel={currentModel}
+                onPressModelSelector={() => setModelSelectorVisible(true)}
+                currentAgent={currentAgent}
+                onPressAgentSelector={() => setAgentSelectorVisible(true)}
+              />
+            )}
           </ContentContainer>
         )}
 
