@@ -17,6 +17,15 @@ import { mapToolStatus, isAssistant } from '../types'
 import { stripThinking } from '../utils/segmentParts'
 import { storageKey } from '../utils/storage'
 
+function formatSessionError(error: any): string {
+  const name = error?.name || ''
+  const message = error?.data?.message || error?.message || ''
+  const statusCode = name === 'APIError' ? error?.data?.statusCode : undefined
+  const parts = [name, message].filter(Boolean)
+  if (statusCode) parts.splice(1, 0, String(statusCode))
+  return parts.join(' ') || 'Unknown error'
+}
+
 interface Props {
   route: any
   navigation: any
@@ -57,6 +66,17 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const handlePermissionReply = useCallback(async (reply: PermissionReply, message?: string) => {
     const req = pendingPermissions[0]
     if (!req) return
+
+    if (reply === 'reject' && message) {
+      const loadingId = `loading-${Date.now()}`
+      setMessages((prev) => [
+        { id: loadingId, role: 'assistant', reasoning: { text: '', isActive: false }, content: '', toolCalls: [] },
+        ...prev,
+      ])
+    }
+
+    setPendingPermissions((prev) => prev.filter((p) => p.id !== req.id))
+
     const ok = await client.replyPermission(req.id, reply, message, cwd || undefined)
     if (!ok) setError('Failed to respond to permission request')
   }, [pendingPermissions, client, cwd])
@@ -95,11 +115,15 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
         const reasoningPart = (item.parts || []).find((p: any) => p.type === 'reasoning')
         const textParts = (item.parts || []).filter((p: any) => p.type === 'text')
         const toolParts = (item.parts || []).filter((p: any) => p.type === 'tool')
+        const errorInfo = item.info?.error
+        const errorContent = errorInfo
+          ? `⚠️ ${formatSessionError(errorInfo)}`
+          : ''
         return {
           id,
           role: 'assistant',
           reasoning: { text: reasoningPart?.text || '', isActive: false },
-          content: textParts.map((p: any) => stripThinking(p.text || '')).join(''),
+          content: errorContent || textParts.map((p: any) => stripThinking(p.text || '')).join(''),
           toolCalls: toolParts.map((p: any): ToolCall => ({
             id: p.id,
             name: p.tool || p.name || '',
@@ -202,6 +226,17 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
           if (evType === 'session.idle') { setSending(false); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
           if (evType === 'session.status' && props.status?.type === 'idle') { setSending(false); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
+          if (evType === 'session.error') {
+            setSending(false)
+            const errMsg = formatSessionError(props.error)
+            setError(errMsg)
+            setMessages((prev) => {
+              const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
+              const errorId = `error-${Date.now()}`
+              return [{ id: errorId, role: 'assistant', reasoning: { text: '', isActive: false }, content: `⚠️ ${errMsg}`, toolCalls: [] }, ...filtered]
+            })
+            continue
+          }
 
           if (evType === 'message.part.updated') {
             const part = props.part
