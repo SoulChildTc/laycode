@@ -33,7 +33,7 @@ export default function AgentSelectorModal({ visible, onClose, agents, currentAg
               keyExtractor={(item) => item.name}
               renderItem={({ item }) => {
                 const isSelected = currentAgent?.name === item.name
-                const dotColor = item.color || (item.name === 'build' ? '#2196F3' : item.name === 'plan' ? '#4CAF50' : '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0'))
+                const dotColor = item.color || '#999'
                 return (
                   <TouchableOpacity
                     style={[styles.option, isSelected && { backgroundColor: theme.surfaceSecondary }]}
