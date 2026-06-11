@@ -64,6 +64,17 @@ export class LayCodeClient {
     } catch { return null }
   }
 
+  async renameSession(sessionId: string, title: string): Promise<void> {
+    await fetch(`${this.baseUrl}/opencode-api/session/${sessionId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({ title }),
+    })
+  }
+
   async deleteSession(sessionId: string): Promise<void> {
     await this.client.session.delete({ path: { id: sessionId } })
   }

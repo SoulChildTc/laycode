@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform, Animated } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform, Animated, Modal, KeyboardAvoidingView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -37,6 +37,8 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
   const [currentModel, setCurrentModel] = useState<ModelKey | null>(null)
   const [providers, setProviders] = useState<Provider[]>([])
   const [modelSelectorVisible, setModelSelectorVisible] = useState(false)
+  const [showRenameModal, setShowRenameModal] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
   const flatListRef = useRef<FlatList>(null)
   const xhrRef = useRef<XMLHttpRequest | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -117,6 +119,22 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
     setCurrentModel(key)
     saveSessionModel(key)
   }, [saveSessionModel])
+
+  const handleRenameTitle = useCallback(() => {
+    setRenameValue(sessionTitle)
+    setShowRenameModal(true)
+  }, [sessionTitle])
+
+  const handleRenameSubmit = useCallback(() => {
+    const newTitle = renameValue.trim()
+    if (!newTitle || newTitle === sessionTitle) {
+      setShowRenameModal(false)
+      return
+    }
+    setSessionTitle(newTitle)
+    setShowRenameModal(false)
+    client.renameSession(sessionId, newTitle).catch(() => {})
+  }, [renameValue, sessionTitle, sessionId, client])
 
   // ==================== SSE STATE MACHINE ====================
   useEffect(() => {
@@ -379,7 +397,9 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
             <Feather name="chevron-left" size={22} color={theme.text} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{headerTitle}</Text>
+            <TouchableOpacity onPress={handleRenameTitle} style={styles.headerTitleTouch}>
+              <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{headerTitle}</Text>
+            </TouchableOpacity>
             <View style={styles.statusRow}>
               <Text style={[styles.statusText, { color: theme.textTertiary }]} numberOfLines={1}>
                 {currentModelName ? `${currentModelName} · ${cwd || '对话'}` : (cwd || '对话')}
@@ -471,6 +491,32 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
         themeMode={themeMode}
         client={client}
       />
+
+      <Modal visible={showRenameModal} transparent animationType="fade" onRequestClose={() => setShowRenameModal(false)}>
+        <KeyboardAvoidingView style={styles.renameOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <TouchableOpacity style={styles.renameOverlayDismiss} activeOpacity={1} onPress={() => setShowRenameModal(false)} />
+          <View style={[styles.renameDialog, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Text style={[styles.renameTitle, { color: theme.text }]}>重命名会话</Text>
+            <TextInput
+              style={[styles.renameInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+              value={renameValue}
+              onChangeText={setRenameValue}
+              onSubmitEditing={handleRenameSubmit}
+              autoFocus
+              selectTextOnFocus
+            />
+            <View style={styles.renameActions}>
+              <TouchableOpacity style={[styles.renameBtn, { backgroundColor: theme.surfaceSecondary }]} onPress={() => setShowRenameModal(false)}>
+                <Text style={[styles.renameBtnText, { color: theme.textSecondary }]}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.renameBtn, styles.renameBtnPrimary, { backgroundColor: theme.accent }]} onPress={handleRenameSubmit}>
+                <Text style={[styles.renameBtnText, { color: '#fff' }]}>确定</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <TouchableOpacity style={styles.renameOverlayDismiss} activeOpacity={1} onPress={() => setShowRenameModal(false)} />
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -483,6 +529,8 @@ const styles = StyleSheet.create({
   backButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: 16, fontWeight: '600' },
+  headerTitleTouch: { paddingHorizontal: 8, paddingVertical: 2 },
+
   statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
   statusDot: { width: 5, height: 5, borderRadius: 2.5, marginLeft: 4 },
   statusText: { fontSize: 11 },
@@ -503,4 +551,13 @@ const styles = StyleSheet.create({
   suggestionText: { fontSize: 13 },
   scrollButton: { position: 'absolute', bottom: 80, right: 16, borderRadius: 20, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 4 },
   scrollButtonTouch: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  renameOverlay: { flex: 1 },
+  renameOverlayDismiss: { flex: 1 },
+  renameDialog: { marginHorizontal: 12, borderRadius: 12, padding: 20, borderWidth: 0.5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 8 },
+  renameTitle: { fontSize: 17, fontWeight: '600', marginBottom: 16 },
+  renameInput: { fontSize: 15, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
+  renameActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16, gap: 10 },
+  renameBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+  renameBtnPrimary: {},
+  renameBtnText: { fontSize: 15, fontWeight: '500' },
 })
