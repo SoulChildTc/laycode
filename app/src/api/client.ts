@@ -1,7 +1,7 @@
 import { createOpencodeClient as createV1Client } from '@opencode-ai/sdk/client'
 import { createOpencodeClient as createV2Client } from '@opencode-ai/sdk/v2/client'
 import type { Session } from '@opencode-ai/sdk'
-import type { ServerConfig, Provider, ModelInfo, Agent } from '../types'
+import type { ServerConfig, Provider, ModelInfo, Agent, PermissionRequest } from '../types'
 
 export interface BrowseEntry {
   name: string
@@ -152,6 +152,39 @@ export class LayCodeClient {
       ),
     }))
     return { providers, default: data.default || {} }
+  }
+
+  async listPendingPermissions(directory?: string): Promise<PermissionRequest[]> {
+    try {
+      const params = directory ? `?directory=${encodeURIComponent(directory)}` : ''
+      const res = await fetch(`${this.baseUrl}/opencode-api/permission${params}`, {
+        headers: { Authorization: `Bearer ${this.token}` },
+      })
+      if (!res.ok) return []
+      const data = await res.json()
+      return Array.isArray(data) ? data : []
+    } catch {
+      return []
+    }
+  }
+
+  async replyPermission(requestID: string, reply: 'once' | 'always' | 'reject', message?: string, directory?: string): Promise<boolean> {
+    try {
+      const params = new URLSearchParams()
+      if (directory) params.set('directory', directory)
+      const url = `${this.baseUrl}/opencode-api/permission/${encodeURIComponent(requestID)}/reply${params.toString() ? '?' + params.toString() : ''}`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.token}`,
+        },
+        body: JSON.stringify({ reply, ...(message ? { message } : {}) }),
+      })
+      return res.ok
+    } catch {
+      return false
+    }
   }
 
   async health(): Promise<boolean> {
