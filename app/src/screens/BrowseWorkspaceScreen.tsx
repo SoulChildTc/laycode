@@ -4,17 +4,19 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient, BrowseEntry } from '../api/client'
-
-const STORAGE_KEY = '@laycode/workspaces'
+import { ServerEntry } from '../types'
+import { storageKey } from '../utils/storage'
 
 interface Props {
   navigation: any
   client: LayCodeClient
   themeMode: ThemeMode
+  config: ServerEntry
 }
 
-export default function BrowseWorkspaceScreen({ navigation, client, themeMode }: Props) {
+export default function BrowseWorkspaceScreen({ navigation, client, themeMode, config }: Props) {
   const theme = getTheme(themeMode)
+  const key = storageKey(config.id, 'workspaces')
   const [current, setCurrent] = useState('')
   const [parent, setParent] = useState('')
   const [entries, setEntries] = useState<BrowseEntry[]>([])
@@ -36,10 +38,10 @@ export default function BrowseWorkspaceScreen({ navigation, client, themeMode }:
   const select = async (dir: string) => {
     const name = dir.split('/').pop() || dir
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY)
+      const raw = await AsyncStorage.getItem(key)
       const list = raw ? JSON.parse(raw) : []
       list.push({ path: dir, name, addedAt: Date.now() })
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(list))
+      await AsyncStorage.setItem(key, JSON.stringify(list))
     } catch {}
     navigation.goBack()
   }

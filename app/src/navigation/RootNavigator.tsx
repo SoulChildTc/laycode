@@ -50,9 +50,9 @@ function MainTabs({ themeMode, client, config, navigation: stackNav, onThemeTogg
         tabBarInactiveTintColor: theme.textTertiary,
       }}
     >
-      <Tab.Screen name="Home">
-        {() => <HomeScreen navigation={stackNav} client={client!} themeMode={themeMode} />}
-      </Tab.Screen>
+<Tab.Screen name="Home">
+          {() => <HomeScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
+        </Tab.Screen>
       <Tab.Screen name="Files">
         {() => <FileExplorerScreen route={{} as any} themeMode={themeMode} client={client!} />}
       </Tab.Screen>
@@ -98,13 +98,13 @@ export default function RootNavigator({ screenProps }: { screenProps: ScreenProp
           </Stack.Screen>
         )}
         <Stack.Screen name="BrowseWorkspace">
-          {(props) => <BrowseWorkspaceScreen {...props} client={client!} themeMode={themeMode} />}
+          {(props) => <BrowseWorkspaceScreen {...props} client={client!} themeMode={themeMode} config={config!} />}
         </Stack.Screen>
         <Stack.Screen name="Workspace">
-          {(props) => <WorkspaceScreen {...props} client={client!} themeMode={themeMode} />}
+          {(props) => <WorkspaceScreen {...props} client={client!} themeMode={themeMode} config={config!} />}
         </Stack.Screen>
         <Stack.Screen name="Session">
-          {(props) => <SessionScreen {...props} themeMode={themeMode} client={client!} />}
+          {(props) => <SessionScreen {...props} themeMode={themeMode} client={client!} config={config!} />}
         </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>

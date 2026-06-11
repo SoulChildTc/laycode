@@ -5,8 +5,8 @@ import { useFocusEffect } from '@react-navigation/native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient } from '../api/client'
-
-const STORAGE_KEY = '@laycode/workspaces'
+import { ServerEntry } from '../types'
+import { storageKey } from '../utils/storage'
 
 interface Workspace {
   path: string
@@ -18,16 +18,18 @@ interface Props {
   navigation: any
   client: LayCodeClient
   themeMode: ThemeMode
+  config: ServerEntry
 }
 
-export default function HomeScreen({ navigation, client, themeMode }: Props) {
+export default function HomeScreen({ navigation, client, themeMode, config }: Props) {
   const theme = getTheme(themeMode)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const key = storageKey(config.id, 'workspaces')
 
   const load = useCallback(async () => {
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY)
+      const raw = await AsyncStorage.getItem(key)
       if (raw) {
         const list = JSON.parse(raw)
         setWorkspaces(list)
@@ -41,15 +43,15 @@ export default function HomeScreen({ navigation, client, themeMode }: Props) {
         setCounts(m)
       }
     } catch {}
-  }, [client])
+  }, [client, key])
 
   useFocusEffect(useCallback(() => { load() }, [load]))
 
   const removeWorkspace = useCallback(async (path: string) => {
     const updated = workspaces.filter(w => w.path !== path)
     setWorkspaces(updated)
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
-  }, [workspaces])
+    await AsyncStorage.setItem(key, JSON.stringify(updated))
+  }, [workspaces, key])
 
   const confirmRemove = (path: string, name: string) => {
     Alert.alert('删除工作区', `确定删除「${name}」？`, [
