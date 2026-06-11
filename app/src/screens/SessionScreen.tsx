@@ -338,26 +338,31 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
         )}
 
         <ContentContainer style={contentStyle}>
-          <FlatList
-            ref={flatListRef}
-            inverted
-            data={messages}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <MessageBubble message={item} theme={theme} />}
-            style={styles.list}
-            contentContainerStyle={messages.length === 0 ? styles.listEmptyContent : styles.listContent}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-            onContentSizeChange={() => {
-              if (sending && !showScrollButton) scrollToBottom(true)
-            }}
-            onScrollBeginDrag={() => { isAtBottom.current = false }}
-            onMomentumScrollEnd={(e) => {
-              isAtBottom.current = e.nativeEvent.contentOffset.y < 40
-            }}
-            ListEmptyComponent={renderEmpty}
-            keyboardShouldPersistTaps="handled"
-          />
+          {messages.length === 0 ? (
+            <View style={styles.emptyWrapper}>
+              {renderEmpty()}
+            </View>
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              inverted
+              data={messages}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => <MessageBubble message={item} theme={theme} />}
+              style={styles.list}
+              contentContainerStyle={styles.listContent}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              onContentSizeChange={() => {
+                if (sending && !showScrollButton) scrollToBottom(true)
+              }}
+              onScrollBeginDrag={() => { isAtBottom.current = false }}
+              onMomentumScrollEnd={(e) => {
+                isAtBottom.current = e.nativeEvent.contentOffset.y < 40
+              }}
+              keyboardShouldPersistTaps="handled"
+            />
+          )}
 
           <InputBar
             input={input}
@@ -398,7 +403,7 @@ const styles = StyleSheet.create({
   errorText: { flex: 1, color: '#fff', fontSize: 13 },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 12, paddingVertical: 8, paddingBottom: 16 },
-  listEmptyContent: { flexGrow: 1 },
+  emptyWrapper: { flex: 1 },
   emptyOuter: { flex: 1, justifyContent: 'center' },
   emptyContainer: { alignItems: 'center', paddingHorizontal: 32 },
   emptyIconRow: { marginBottom: 16 },
