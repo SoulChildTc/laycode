@@ -9,11 +9,12 @@ import MessageBubble from '../components/MessageBubble'
 import InputBar from '../components/InputBar'
 import SubagentFooter from '../components/SubagentFooter'
 import PermissionPrompt from '../components/PermissionPrompt'
+import QuestionPrompt from '../components/QuestionPrompt'
 import ModelSelectorModal from '../components/ModelSelectorModal'
 import AgentSelectorModal from '../components/AgentSelectorModal'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import { useAgents } from '../hooks/useAgents'
-import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, ServerEntry } from '../types'
+import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, QuestionRequest, ServerEntry } from '../types'
 import { mapToolStatus, isAssistant } from '../types'
 import { stripThinking } from '../utils/segmentParts'
 import { storageKey } from '../utils/storage'
@@ -55,6 +56,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [renameValue, setRenameValue] = useState('')
   const [agentSelectorVisible, setAgentSelectorVisible] = useState(false)
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([])
+  const [pendingQuestions, setPendingQuestions] = useState<QuestionRequest[]>([])
   const [parentID, setParentID] = useState<string | null>(null)
   const [childSessions, setChildSessions] = useState<{ id: string; title: string }[]>([])
   const flatListRef = useRef<FlatList>(null)
@@ -84,6 +86,22 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     if (!ok) setError('Failed to respond to permission request')
   }, [pendingPermissions, client, cwd])
 
+  const handleQuestionReply = useCallback(async (answers: string[][]) => {
+    const req = pendingQuestions[0]
+    if (!req) return
+    setPendingQuestions((prev) => prev.filter((q) => q.id !== req.id))
+    const ok = await client.replyQuestion(req.id, answers, cwd || undefined)
+    if (!ok) setError('Failed to reply to question')
+  }, [pendingQuestions, client, cwd])
+
+  const handleQuestionReject = useCallback(async () => {
+    const req = pendingQuestions[0]
+    if (!req) return
+    setPendingQuestions((prev) => prev.filter((q) => q.id !== req.id))
+    const ok = await client.rejectQuestion(req.id, cwd || undefined)
+    if (!ok) setError('Failed to reject question')
+  }, [pendingQuestions, client, cwd])
+
   const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
 
   useEffect(() => {
@@ -102,6 +120,17 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       if (reqs.length === 0) return
       setPendingPermissions((prev) => {
         const existing = new Set(prev.map((p) => p.id))
+        return [...prev, ...reqs.filter((r) => !existing.has(r.id))]
+      })
+    }).catch(() => {})
+  }, [sessionId, cwd])
+
+  useEffect(() => {
+    if (!sessionId || !cwd) return
+    client.listPendingQuestions(cwd).then((reqs) => {
+      if (reqs.length === 0) return
+      setPendingQuestions((prev) => {
+        const existing = new Set(prev.map((q) => q.id))
         return [...prev, ...reqs.filter((r) => !existing.has(r.id))]
       })
     }).catch(() => {})
@@ -433,6 +462,27 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
               }
               continue
             }
+
+            if (evType === 'question.asked') {
+              if (props.sessionID !== sessionId) continue
+              const req = props as QuestionRequest
+              setPendingQuestions((prev) => {
+                const exists = prev.find((q) => q.id === req.id)
+                if (exists) return prev
+                return [...prev, req]
+              })
+              continue
+            }
+
+            if (evType === 'question.replied' || evType === 'question.rejected') {
+              if (props.sessionID !== sessionId) continue
+              const { requestID, questionID } = props
+              const id = requestID || questionID
+              if (id) {
+                setPendingQuestions((prev) => prev.filter((q) => q.id !== id))
+              }
+              continue
+            }
         }
       }
 
@@ -617,7 +667,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                   onChangeText={setInput}
                   onSend={handleSend}
                   sending={sending}
-                  disabled={pendingPermissions.length > 0}
+                  disabled={pendingPermissions.length > 0 || pendingQuestions.length > 0}
                   theme={theme}
                   inputRef={inputRef}
                   isKeyboardOpen={isKeyboardOpen}
@@ -667,7 +717,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                 onChangeText={setInput}
                 onSend={handleSend}
                 sending={sending}
-                disabled={pendingPermissions.length > 0}
+                disabled={pendingPermissions.length > 0 || pendingQuestions.length > 0}
                 theme={theme}
                 inputRef={inputRef}
                 isKeyboardOpen={isKeyboardOpen}
@@ -685,6 +735,15 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           request={pendingPermissions[0]}
           theme={theme}
           onReply={handlePermissionReply}
+        />
+      )}
+
+        {pendingQuestions.length > 0 && (
+        <QuestionPrompt
+          request={pendingQuestions[0]}
+          theme={theme}
+          onReply={handleQuestionReply}
+          onReject={handleQuestionReject}
         />
       )}
 
