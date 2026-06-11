@@ -2,14 +2,18 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform, Animated } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { LayCodeClient } from '../api/client'
 import { getTheme, ThemeMode } from '../theme'
 import MessageBubble from '../components/MessageBubble'
 import InputBar from '../components/InputBar'
+import ModelSelectorModal from '../components/ModelSelectorModal'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
-import type { Message, AssistantMsg, UserMsg, ToolCall } from '../types'
+import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider } from '../types'
 import { mapToolStatus, isAssistant } from '../types'
 import { stripThinking } from '../utils/segmentParts'
+
+const SESSION_MODEL_KEY = '@laycode/session-models'
 
 interface Props {
   route: any
@@ -30,6 +34,9 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
+  const [currentModel, setCurrentModel] = useState<ModelKey | null>(null)
+  const [providers, setProviders] = useState<Provider[]>([])
+  const [modelSelectorVisible, setModelSelectorVisible] = useState(false)
   const flatListRef = useRef<FlatList>(null)
   const xhrRef = useRef<XMLHttpRequest | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -75,8 +82,41 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
         }
       })
       setMessages(m.reverse())
+
+      const lastAssistant = (raw || []).find((item: any) => item.info?.role === 'assistant')
+      if (lastAssistant?.info?.providerID && lastAssistant?.info?.modelID) {
+        setCurrentModel({
+          providerID: lastAssistant.info.providerID,
+          modelID: lastAssistant.info.modelID,
+        })
+      }
     }).catch((e) => setError(`加载消息失败: ${e.message}`))
+
+    client.getProviders().then((res) => {
+      setProviders(res.providers)
+    }).catch(() => {})
+
+    AsyncStorage.getItem(SESSION_MODEL_KEY).then((raw) => {
+      if (!raw) return
+      try {
+        const saved: Record<string, ModelKey> = JSON.parse(raw)
+        if (saved[sessionId]) setCurrentModel(saved[sessionId])
+      } catch {}
+    }).catch(() => {})
   }, [sessionId])
+
+  const saveSessionModel = useCallback((key: ModelKey) => {
+    AsyncStorage.getItem(SESSION_MODEL_KEY).then((raw) => {
+      const all: Record<string, ModelKey> = raw ? JSON.parse(raw) : {}
+      all[sessionId] = key
+      AsyncStorage.setItem(SESSION_MODEL_KEY, JSON.stringify(all)).catch(() => {})
+    }).catch(() => {})
+  }, [sessionId])
+
+  const handleModelSelect = useCallback((key: ModelKey) => {
+    setCurrentModel(key)
+    saveSessionModel(key)
+  }, [saveSessionModel])
 
   // ==================== SSE STATE MACHINE ====================
   useEffect(() => {
@@ -85,7 +125,6 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
     let aborted = false
     let lastProcessed = 0
     let buf = ''
-    // Track which partID is a reasoning part
     const reasoningPartIds = new Set<string>()
 
     const connect = () => {
@@ -118,7 +157,6 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
           if (evType === 'session.idle') { setSending(false); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
           if (evType === 'session.status' && props.status?.type === 'idle') { setSending(false); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
 
-          // ========== message.part.updated ==========
           if (evType === 'message.part.updated') {
             const part = props.part
             if (!part || !part.id) continue
@@ -126,7 +164,6 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
             const partType: string = part.type
             const partText: string = part.text || ''
 
-            // --- Phase 1: reasoning starts (empty text) ---
             if (partType === 'reasoning' && partText === '') {
               reasoningPartIds.add(part.id)
               setMessages((prev) => {
@@ -140,7 +177,6 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
               continue
             }
 
-            // --- Phase 3a: reasoning ends (non-empty text) ---
             if (partType === 'reasoning' && partText !== '') {
               setMessages((prev) => prev.map((m) =>
                 m.id === msgID && isAssistant(m)
@@ -150,7 +186,6 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
               continue
             }
 
-            // --- text part starts → reasoning is over ---
             if (partType === 'text') {
               setMessages((prev) => {
                 const exists = prev.find((m) => m.id === msgID)
@@ -160,7 +195,6 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
                     : m
                   )
                 }
-                // User message echo from server
                 const pendingIdx = prev.findIndex((m) => m.id.startsWith('u-') && m.role === 'user')
                 if (pendingIdx >= 0) {
                   const copy = [...prev]
@@ -172,7 +206,6 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
               continue
             }
 
-            // --- tool part ---
             if (partType === 'tool') {
               setMessages((prev) => prev.map((m) => {
                 if (m.id !== msgID || !isAssistant(m)) return m
@@ -195,7 +228,6 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
             continue
           }
 
-          // ========== message.part.delta ==========
           if (evType === 'message.part.delta') {
             const { messageID, partID, delta } = props
             if (!delta || !partID || !messageID) continue
@@ -247,6 +279,17 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
     }
   }, [sessionId])
 
+  const getModelDisplayName = useCallback((key: ModelKey | null): string => {
+    if (!key) return ''
+    for (const p of providers) {
+      if (p.id === key.providerID) {
+        const m = p.models[key.modelID]
+        return m?.name || key.modelID
+      }
+    }
+    return key.modelID
+  }, [providers])
+
   const scrollToBottom = useCallback((animated = true) => {
     flatListRef.current?.scrollToIndex({ index: 0, animated })
   }, [])
@@ -281,18 +324,24 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
     ])
 
     try {
+      const body: any = { parts: [{ type: 'text' as any, text }] }
+      if (currentModel) {
+        body.model = { providerID: currentModel.providerID, modelID: currentModel.modelID }
+      }
       await client.client.session.promptAsync({
         path: { id: sessionId },
-        body: { parts: [{ type: 'text' as any, text }] },
+        body,
       })
     } catch (e: any) {
       setSending(false)
       setError(`发送失败: ${e.message}`)
       setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-')))
     }
-  }, [input, sending, sessionId, client])
+  }, [input, sending, sessionId, client, currentModel])
 
   const isAtBottom = useRef(true)
+
+  const currentModelName = getModelDisplayName(currentModel)
 
   const renderEmpty = () => (
     <View style={styles.emptyOuter}>
@@ -332,7 +381,9 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
           <View style={styles.headerCenter}>
             <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{headerTitle}</Text>
             <View style={styles.statusRow}>
-              <Text style={[styles.statusText, { color: theme.textTertiary }]} numberOfLines={1}>{cwd || '对话'}</Text>
+              <Text style={[styles.statusText, { color: theme.textTertiary }]} numberOfLines={1}>
+                {currentModelName ? `${currentModelName} · ${cwd || '对话'}` : (cwd || '对话')}
+              </Text>
               <View style={[styles.statusDot, { backgroundColor: sending ? theme.warning : theme.success }]} />
             </View>
           </View>
@@ -362,6 +413,8 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
                 theme={theme}
                 inputRef={inputRef}
                 isKeyboardOpen={isKeyboardOpen}
+                currentModel={currentModel}
+                onPressModelSelector={() => setModelSelectorVisible(true)}
               />
             </Animated.View>
           </>
@@ -395,6 +448,8 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
               theme={theme}
               inputRef={inputRef}
               isKeyboardOpen={isKeyboardOpen}
+              currentModel={currentModel}
+              onPressModelSelector={() => setModelSelectorVisible(true)}
             />
           </ContentContainer>
         )}
@@ -407,6 +462,15 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
           </Animated.View>
         )}
       </View>
+
+      <ModelSelectorModal
+        visible={modelSelectorVisible}
+        onClose={() => setModelSelectorVisible(false)}
+        onSelect={handleModelSelect}
+        currentModel={currentModel}
+        themeMode={themeMode}
+        client={client}
+      />
     </SafeAreaView>
   )
 }

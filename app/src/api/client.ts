@@ -1,7 +1,7 @@
 import { createOpencodeClient as createV1Client } from '@opencode-ai/sdk/client'
 import { createOpencodeClient as createV2Client } from '@opencode-ai/sdk/v2/client'
 import type { Session } from '@opencode-ai/sdk'
-import { ServerConfig } from '../types'
+import type { ServerConfig, Provider, ModelInfo } from '../types'
 
 export interface BrowseEntry {
   name: string
@@ -89,6 +89,35 @@ export class LayCodeClient {
   async readFile(path: string) {
     const res = await this.client.file.read({ query: { path } })
     return (res.data as any) || {}
+  }
+
+  async getProviders(): Promise<{ providers: Provider[]; default: Record<string, string> }> {
+    const res = await fetch(`${this.baseUrl}/opencode-api/config/providers`, {
+      headers: { Authorization: `Bearer ${this.token}` },
+    })
+    if (!res.ok) return { providers: [], default: {} }
+    const data = await res.json()
+    const providers: Provider[] = (data.providers || []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      source: p.source || '',
+      models: Object.fromEntries(
+        Object.entries(p.models || {}).map(([id, m]: [string, any]) => [
+          id,
+          {
+            id: m.id || id,
+            providerID: p.id,
+            name: m.name || id,
+            capabilities: {
+              reasoning: !!m.capabilities?.reasoning,
+              toolcall: !!m.capabilities?.toolcall,
+            },
+            status: m.status || 'active',
+          } as ModelInfo,
+        ])
+      ),
+    }))
+    return { providers, default: data.default || {} }
   }
 
   async health(): Promise<boolean> {
