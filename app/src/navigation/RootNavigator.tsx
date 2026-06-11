@@ -11,7 +11,7 @@ import FileExplorerScreen from '../screens/FileExplorerScreen'
 import SettingsScreen from '../screens/SettingsScreen'
 import { LayCodeClient } from '../api/client'
 import { ThemeMode, getTheme } from '../theme'
-import { ServerConfig } from '../types'
+import { ServerEntry } from '../types'
 
 export type RootStackParamList = {
   Connect: undefined
@@ -30,8 +30,8 @@ export type TabParamList = {
 interface ScreenProps {
   themeMode: ThemeMode
   client: LayCodeClient | null
-  config: ServerConfig | null
-  onConnect: (config: ServerConfig) => void
+  config: ServerEntry | null
+  onConnect: (config: ServerEntry) => void
   onThemeToggle: () => void
   onDisconnect: () => void
 }
@@ -39,7 +39,7 @@ interface ScreenProps {
 const Stack = createNativeStackNavigator<RootStackParamList>()
 const Tab = createBottomTabNavigator<TabParamList>()
 
-function MainTabs({ themeMode, client, config, navigation: stackNav, onThemeToggle, onDisconnect }: ScreenProps & { navigation: any }) {
+function MainTabs({ themeMode, client, config, navigation: stackNav, onThemeToggle, onDisconnect, onConnect }: ScreenProps & { navigation: any }) {
   const theme = getTheme(themeMode)
   return (
     <Tab.Navigator
@@ -64,6 +64,7 @@ function MainTabs({ themeMode, client, config, navigation: stackNav, onThemeTogg
             onThemeToggle={onThemeToggle}
             config={config}
             onDisconnect={onDisconnect}
+            onConnect={onConnect}
           />
         )}
       </Tab.Screen>
@@ -79,7 +80,7 @@ export default function RootNavigator({ screenProps }: { screenProps: ScreenProp
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!client ? (
           <Stack.Screen name="Connect">
-            {() => <ConnectScreen navigation={undefined as any} themeMode={themeMode} onConnect={onConnect} />}
+            {() => <ConnectScreen themeMode={themeMode} onConnect={onConnect} />}
           </Stack.Screen>
         ) : (
           <Stack.Screen name="Main">

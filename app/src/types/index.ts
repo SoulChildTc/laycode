@@ -4,6 +4,14 @@ export interface ServerConfig {
   token: string
 }
 
+export interface ServerEntry {
+  id: string
+  name: string
+  host: string
+  port: number
+  token: string
+}
+
 export interface Project {
   id: string
   name: string
