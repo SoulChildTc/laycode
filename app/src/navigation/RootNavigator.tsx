@@ -10,7 +10,7 @@ import SessionScreen from '../screens/SessionScreen'
 import FileExplorerScreen from '../screens/FileExplorerScreen'
 import SettingsScreen from '../screens/SettingsScreen'
 import { LayCodeClient } from '../api/client'
-import { ThemeMode } from '../theme'
+import { ThemeMode, getTheme } from '../theme'
 import { ServerConfig } from '../types'
 
 export type RootStackParamList = {
@@ -40,13 +40,14 @@ const Stack = createNativeStackNavigator<RootStackParamList>()
 const Tab = createBottomTabNavigator<TabParamList>()
 
 function MainTabs({ themeMode, client, config, navigation: stackNav, onThemeToggle, onDisconnect }: ScreenProps & { navigation: any }) {
+  const theme = getTheme(themeMode)
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: '#1a1a2e', borderTopColor: '#2a2a3e' },
-        tabBarActiveTintColor: '#6c63ff',
-        tabBarInactiveTintColor: '#888',
+        tabBarStyle: { backgroundColor: theme.surface, borderTopColor: theme.border },
+        tabBarActiveTintColor: theme.accent,
+        tabBarInactiveTintColor: theme.textTertiary,
       }}
     >
       <Tab.Screen name="Home">
