@@ -50,7 +50,7 @@ export default function InputBar({ input, onChangeText, onSend, sending, theme, 
 
 const styles = StyleSheet.create({
   inputBar: { paddingHorizontal: 12, paddingVertical: 8 },
-  inputRow: { flexDirection: 'row', alignItems: 'flex-end', borderRadius: 16, borderWidth: 1, paddingLeft: 16, paddingRight: 6, paddingVertical: 6 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, paddingLeft: 16, paddingRight: 6, paddingVertical: 6 },
   input: { flex: 1, fontSize: 15, lineHeight: 22, maxHeight: 100, paddingVertical: 4 },
   sendButton: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
   sendButtonDisabled: { opacity: 0.5 },
