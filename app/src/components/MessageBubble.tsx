@@ -53,9 +53,9 @@ export default function MessageBubble({ message, theme }: Props) {
 }
 
 const styles = StyleSheet.create({
-  userContainer: { marginVertical: 3, flexDirection: 'row', justifyContent: 'flex-end' },
+  userContainer: { marginVertical: 6, flexDirection: 'row', justifyContent: 'flex-end' },
   userBubble: { maxWidth: '80%', borderRadius: 20, borderBottomRightRadius: 6, paddingHorizontal: 16, paddingVertical: 10 },
   userText: { fontSize: 15, lineHeight: 22 },
-  assistantContainer: { marginVertical: 3, flexDirection: 'row', justifyContent: 'flex-start' },
+  assistantContainer: { marginVertical: 6, flexDirection: 'row', justifyContent: 'flex-start' },
   assistantBubble: { flex: 1, borderRadius: 20, borderBottomLeftRadius: 6, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10 },
 })
