@@ -2,6 +2,7 @@ import React, { useRef } from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import type { Theme } from '../theme'
+import type { ModelKey } from '../types'
 
 interface Props {
   input: string
@@ -11,13 +12,32 @@ interface Props {
   theme: Theme
   inputRef: React.RefObject<TextInput | null>
   isKeyboardOpen: boolean
+  currentModel: ModelKey | null
+  onPressModelSelector: () => void
 }
 
-export default function InputBar({ input, onChangeText, onSend, sending, theme, inputRef, isKeyboardOpen }: Props) {
+export default function InputBar({ input, onChangeText, onSend, sending, theme, inputRef, isKeyboardOpen, currentModel, onPressModelSelector }: Props) {
   const bottomPad = Platform.OS === 'ios' ? (isKeyboardOpen ? 8 : 22) : 12
+
+  const modelLabel = currentModel
+    ? currentModel.modelID.length > 12
+      ? currentModel.modelID.slice(0, 10) + '…'
+      : currentModel.modelID
+    : 'model'
+
   return (
     <View style={[styles.inputBar, { backgroundColor: theme.background, paddingBottom: bottomPad }]}>
       <View style={[styles.inputRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <TouchableOpacity
+          style={styles.modelButton}
+          onPress={onPressModelSelector}
+          activeOpacity={0.6}
+        >
+          <Feather name="cpu" size={14} color={theme.textSecondary} />
+          <Text style={[styles.modelLabel, { color: theme.textTertiary }]} numberOfLines={1}>
+            {modelLabel}
+          </Text>
+        </TouchableOpacity>
         <TextInput
           ref={inputRef}
           style={[styles.input, { color: theme.text }]}
@@ -50,7 +70,17 @@ export default function InputBar({ input, onChangeText, onSend, sending, theme, 
 
 const styles = StyleSheet.create({
   inputBar: { paddingHorizontal: 12, paddingVertical: 8 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, paddingLeft: 16, paddingRight: 6, paddingVertical: 6 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, paddingLeft: 8, paddingRight: 6, paddingVertical: 6 },
+  modelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginRight: 4,
+    gap: 4,
+  },
+  modelLabel: { fontSize: 11, fontWeight: '600', maxWidth: 72 },
   input: { flex: 1, fontSize: 15, lineHeight: 22, maxHeight: 100, paddingVertical: 4 },
   sendButton: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
   sendButtonDisabled: { opacity: 0.5 },

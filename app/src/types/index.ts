@@ -47,6 +47,29 @@ export function isAssistant(msg: Message): msg is AssistantMsg {
   return msg.role === 'assistant'
 }
 
+export interface ModelInfo {
+  id: string
+  providerID: string
+  name: string
+  capabilities: {
+    reasoning?: boolean
+    toolcall?: boolean
+  }
+  status: string
+}
+
+export interface Provider {
+  id: string
+  name: string
+  source: string
+  models: Record<string, ModelInfo>
+}
+
+export interface ModelKey {
+  providerID: string
+  modelID: string
+}
+
 export function mapToolStatus(status: string): 'running' | 'completed' | 'error' {
   if (status === 'running' || status === 'pending') return 'running'
   if (status === 'completed' || status === 'success') return 'completed'
