@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import RootNavigator from './src/navigation/RootNavigator'
 import { LayCodeClient } from './src/api/client'
 import { ThemeMode } from './src/theme'
-import { ServerConfig } from './src/types'
+import { ServerConfig, ServerEntry } from './src/types'
 
 const THEME_KEY = '@laycode/theme-mode'
 
@@ -13,7 +13,7 @@ export default function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>('dark')
   const [themeLoaded, setThemeLoaded] = useState(false)
   const [client, setClient] = useState<LayCodeClient | null>(null)
-  const [config, setConfig] = useState<ServerConfig | null>(null)
+  const [config, setConfig] = useState<ServerEntry | null>(null)
 
   useEffect(() => {
     AsyncStorage.getItem(THEME_KEY).then((saved) => {
@@ -42,14 +42,15 @@ export default function App() {
           themeMode,
           client,
           config,
-          onConnect: (cfg: ServerConfig) => {
+          onConnect: (cfg: ServerEntry) => {
             setConfig(cfg)
             setClient(new LayCodeClient(cfg))
           },
           onThemeToggle: handleThemeToggle,
-          onDisconnect: () => {
+          onDisconnect: async () => {
             setClient(null)
             setConfig(null)
+            await AsyncStorage.removeItem('@laycode/last-server-id')
           },
         }}
       />
