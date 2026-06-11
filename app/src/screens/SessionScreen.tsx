@@ -115,8 +115,8 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
           const evType: string = payload?.type || ''
           const props = payload?.properties || {}
 
-          if (evType === 'session.idle') { setSending(false); continue }
-          if (evType === 'session.status' && props.status?.type === 'idle') { setSending(false); continue }
+          if (evType === 'session.idle') { setSending(false); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
+          if (evType === 'session.status' && props.status?.type === 'idle') { setSending(false); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
 
           // ========== message.part.updated ==========
           if (evType === 'message.part.updated') {
@@ -134,7 +134,8 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
                 if (exists && isAssistant(exists)) {
                   return prev.map((m) => m.id === msgID ? { ...m, reasoning: { text: '', isActive: true } } : m)
                 }
-                return [{ id: msgID, role: 'assistant', reasoning: { text: '', isActive: true }, content: '', toolCalls: [] }, ...prev]
+                const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
+                return [{ id: msgID, role: 'assistant', reasoning: { text: '', isActive: true }, content: '', toolCalls: [] }, ...filtered]
               })
               continue
             }
@@ -204,10 +205,11 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
             setMessages((prev) => {
               const exists = prev.find((m) => m.id === messageID && isAssistant(m))
               if (!exists) {
+                const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
                 if (isReasoningDelta) {
-                  return [{ id: messageID, role: 'assistant', reasoning: { text: delta, isActive: true }, content: '', toolCalls: [] }, ...prev]
+                  return [{ id: messageID, role: 'assistant', reasoning: { text: delta, isActive: true }, content: '', toolCalls: [] }, ...filtered]
                 }
-                return [{ id: messageID, role: 'assistant', reasoning: { text: '', isActive: false }, content: delta, toolCalls: [] }, ...prev]
+                return [{ id: messageID, role: 'assistant', reasoning: { text: '', isActive: false }, content: delta, toolCalls: [] }, ...filtered]
               }
               return prev.map((m) => {
                 if (m.id !== messageID || !isAssistant(m)) return m
@@ -271,7 +273,12 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
     setInput('')
 
     const userMsgId = `u-${Date.now()}`
-    setMessages((prev) => [{ id: userMsgId, role: 'user', text }, ...prev])
+    const loadingMsgId = `loading-${Date.now()}`
+    setMessages((prev) => [
+      { id: loadingMsgId, role: 'assistant', reasoning: { text: '', isActive: false }, content: '', toolCalls: [] },
+      { id: userMsgId, role: 'user', text },
+      ...prev,
+    ])
 
     try {
       await client.client.session.promptAsync({
@@ -281,6 +288,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
     } catch (e: any) {
       setSending(false)
       setError(`发送失败: ${e.message}`)
+      setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-')))
     }
   }, [input, sending, sessionId, client])
 
