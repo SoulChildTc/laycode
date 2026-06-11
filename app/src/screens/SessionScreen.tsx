@@ -354,6 +354,7 @@ export default function SessionScreen({ route, navigation, themeMode, client }: 
         body.model = { providerID: currentModel.providerID, modelID: currentModel.modelID }
       }
       if (currentAgent) {
+        console.log('Using agent:', currentAgent.name)
         body.agent = currentAgent.name
       }
       await client.client.session.promptAsync({

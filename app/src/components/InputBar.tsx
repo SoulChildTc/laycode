@@ -63,7 +63,7 @@ export default function InputBar({ input, onChangeText, onSend, sending, theme, 
           style={[styles.input, { color: theme.text }]}
           value={input}
           onChangeText={onChangeText}
-          placeholder="给 AI 发送消息..."
+          placeholder="发送消息..."
           placeholderTextColor={theme.textTertiary}
           multiline
           maxLength={4000}
