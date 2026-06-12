@@ -144,3 +144,11 @@ export interface Agent {
   prompt?: string
   steps?: number
 }
+
+export interface Todo {
+  id: string
+  text: string
+  done: boolean
+  createdAt: number
+  updatedAt: number
+}

@@ -42,7 +42,7 @@ function getTitle(permission: string, metadata: Record<string, any>): string {
     case 'webfetch': return `WebFetch ${metadata.url || ''}`
     case 'websearch': return `${metadata.provider || 'Search'} "${metadata.query || ''}"`
     case 'task': return `${metadata.type || 'Sub'} Task`
-    case 'external_directory': return `Access external directory ${metadata.directory || ''}`
+    case 'external_directory': return metadata.description || `Access external directory ${metadata.directory || ''}`
     case 'doom_loop': return 'Continue after repeated failures'
     default: return `Call tool ${permission}`
   }
@@ -70,7 +70,10 @@ function getBody(permission: string, metadata: Record<string, any>, patterns: st
     case 'task':
       return { heading: 'Description:', content: metadata.description || patternsFallback || '' }
     case 'external_directory':
-      return { heading: 'Patterns:', content: (metadata.patterns || []).join(', ') || patternsFallback || metadata.directory || '' }
+      if (metadata.command) {
+        return { heading: 'Command:', content: `$ ${metadata.command || ''}` }
+      }
+      return { heading: 'Directory:', content: metadata.directory || patternsFallback || '' }
     case 'doom_loop':
       return { heading: '', content: 'Let the model try again after repeated failures.' }
     default:

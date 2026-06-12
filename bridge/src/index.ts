@@ -10,6 +10,7 @@ import { createProxyHandler } from './proxy.js'
 import { startMdns, stopMdns } from './mdns.js'
 import { startWebSocketServer, stopWebSocketServer } from './ws.js'
 import { ensureOpencode, stopOpencode, restartOpencode } from './opencode.js'
+import { readTodos, addTodo, updateTodo, deleteTodo } from './todos.js'
 
 const config = parseArgs()
 const app = express()
@@ -43,6 +44,53 @@ function createSseHandler(path: string) {
 app.get('/opencode-api/event', createSseHandler('/event'))
 app.get('/opencode-api/global/event', createSseHandler('/global/event'))
 app.get('/opencode-api/api/event', createSseHandler('/api/event'))
+
+// Todo API (auth-protected)
+function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (req.headers.authorization !== `Bearer ${config.token}`) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+  next()
+}
+
+function getDirectory(req: express.Request): string {
+  const d = req.query.directory
+  return typeof d === 'string' ? d : ''
+}
+
+app.get('/api/v1/todos', requireAuth, (req, res) => {
+  const directory = getDirectory(req)
+  if (!directory) return res.status(400).json({ error: 'directory required' })
+  const list = readTodos(directory)
+  res.json({ items: list.items })
+})
+
+app.post('/api/v1/todos', requireAuth, (req, res) => {
+  const directory = getDirectory(req)
+  if (!directory) return res.status(400).json({ error: 'directory required' })
+  const { text } = req.body
+  if (!text?.trim()) return res.status(400).json({ error: 'text required' })
+  const todo = addTodo(directory, text.trim())
+  res.status(201).json(todo)
+})
+
+app.patch('/api/v1/todos/:id', requireAuth, (req, res) => {
+  const directory = getDirectory(req)
+  if (!directory) return res.status(400).json({ error: 'directory required' })
+  const id = String(req.params.id)
+  const todo = updateTodo(directory, id, req.body)
+  if (!todo) return res.status(404).json({ error: 'not found' })
+  res.json(todo)
+})
+
+app.delete('/api/v1/todos/:id', requireAuth, (req, res) => {
+  const directory = getDirectory(req)
+  if (!directory) return res.status(400).json({ error: 'directory required' })
+  const id = String(req.params.id)
+  const ok = deleteTodo(directory, id)
+  if (!ok) return res.status(404).json({ error: 'not found' })
+  res.json({ ok: true })
+})
 
 // Proxy — catch all methods on /opencode-api/* (Express 5 compatible)
 app.use('/opencode-api', createProxyHandler(config))
