@@ -1,7 +1,7 @@
 import { createOpencodeClient as createV1Client } from '@opencode-ai/sdk/client'
 import { createOpencodeClient as createV2Client } from '@opencode-ai/sdk/v2/client'
 import type { Session } from '@opencode-ai/sdk'
-import type { ServerConfig, Provider, ModelInfo, Agent, PermissionRequest, QuestionRequest } from '../types'
+import type { ServerConfig, Provider, ModelInfo, Agent, PermissionRequest, QuestionRequest, Todo } from '../types'
 
 export interface BrowseEntry {
   name: string
@@ -254,5 +254,52 @@ export class LayCodeClient {
     } catch {
       return false
     }
+  }
+
+  async getTodos(directory: string): Promise<Todo[]> {
+    const params = `?directory=${encodeURIComponent(directory)}`
+    const res = await fetch(`${this.baseUrl}/api/v1/todos${params}`, {
+      headers: { Authorization: `Bearer ${this.token}` },
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return data.items || []
+  }
+
+  async createTodo(directory: string, text: string): Promise<Todo | null> {
+    const params = `?directory=${encodeURIComponent(directory)}`
+    const res = await fetch(`${this.baseUrl}/api/v1/todos${params}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({ text }),
+    })
+    if (!res.ok) return null
+    return res.json()
+  }
+
+  async updateTodo(directory: string, id: string, update: { text?: string; done?: boolean }): Promise<Todo | null> {
+    const params = `?directory=${encodeURIComponent(directory)}`
+    const res = await fetch(`${this.baseUrl}/api/v1/todos/${encodeURIComponent(id)}${params}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify(update),
+    })
+    if (!res.ok) return null
+    return res.json()
+  }
+
+  async deleteTodo(directory: string, id: string): Promise<boolean> {
+    const params = `?directory=${encodeURIComponent(directory)}`
+    const res = await fetch(`${this.baseUrl}/api/v1/todos/${encodeURIComponent(id)}${params}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.token}` },
+    })
+    return res.ok
   }
 }

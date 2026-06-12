@@ -1,4 +1,5 @@
 import React from 'react'
+import { Feather } from '@expo/vector-icons'
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
@@ -9,6 +10,8 @@ import WorkspaceScreen from '../screens/WorkspaceScreen'
 import SessionScreen from '../screens/SessionScreen'
 import FileExplorerScreen from '../screens/FileExplorerScreen'
 import SettingsScreen from '../screens/SettingsScreen'
+import TodoScreen from '../screens/TodoScreen'
+import TodoSummaryScreen from '../screens/TodoSummaryScreen'
 import { LayCodeClient } from '../api/client'
 import { ThemeMode, getTheme } from '../theme'
 import { ServerEntry } from '../types'
@@ -19,10 +22,12 @@ export type RootStackParamList = {
   BrowseWorkspace: undefined
   Workspace: { directory: string; name: string }
   Session: { projectId: string; sessionId: string }
+  Todo: { directory: string; name: string }
 }
 
 export type TabParamList = {
   Home: undefined
+  Todos: undefined
   Files: undefined
   Settings: undefined
 }
@@ -48,15 +53,19 @@ function MainTabs({ themeMode, client, config, navigation: stackNav, onThemeTogg
         tabBarStyle: { backgroundColor: theme.surface, borderTopColor: theme.border },
         tabBarActiveTintColor: theme.accent,
         tabBarInactiveTintColor: theme.textTertiary,
+        tabBarLabelStyle: { fontSize: 11 },
       }}
     >
-<Tab.Screen name="Home">
-          {() => <HomeScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
-        </Tab.Screen>
-      <Tab.Screen name="Files">
+      <Tab.Screen name="Home" options={{ tabBarIcon: ({ color, size }) => <Feather name="home" size={size} color={color} /> }}>
+        {() => <HomeScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
+      </Tab.Screen>
+      <Tab.Screen name="Todos" options={{ tabBarIcon: ({ color, size }) => <Feather name="check-square" size={size} color={color} /> }}>
+        {() => <TodoSummaryScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
+      </Tab.Screen>
+      <Tab.Screen name="Files" options={{ tabBarIcon: ({ color, size }) => <Feather name="folder" size={size} color={color} /> }}>
         {() => <FileExplorerScreen route={{} as any} themeMode={themeMode} client={client!} />}
       </Tab.Screen>
-      <Tab.Screen name="Settings">
+      <Tab.Screen name="Settings" options={{ tabBarIcon: ({ color, size }) => <Feather name="settings" size={size} color={color} /> }}>
         {() => (
           <SettingsScreen
             navigation={stackNav}
@@ -106,6 +115,9 @@ export default function RootNavigator({ screenProps }: { screenProps: ScreenProp
         </Stack.Screen>
         <Stack.Screen name="Session">
           {(props) => <SessionScreen {...props} themeMode={themeMode} client={client!} config={config!} />}
+        </Stack.Screen>
+        <Stack.Screen name="Todo">
+          {(props) => <TodoScreen {...props} themeMode={themeMode} client={client!} />}
         </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>

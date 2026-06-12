@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { Feather } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient } from '../api/client'
@@ -172,7 +173,12 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
               <Text style={[styles.back, { color: theme.accent }]}>← 工作区</Text>
             </TouchableOpacity>
             <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{name}</Text>
-            <View style={{ width: 60 }} />
+            <TouchableOpacity
+              style={styles.todoBtn}
+              onPress={() => navigation.navigate('Todo', { directory, name })}
+            >
+              <Feather name="check-square" size={18} color={theme.accent} />
+            </TouchableOpacity>
           </>
         )}
       </View>
@@ -251,6 +257,7 @@ const styles = StyleSheet.create({
   back: { fontSize: 16 },
   action: { fontSize: 15, fontWeight: '500' },
   headerTitle: { fontSize: 17, fontWeight: '600', flex: 1, textAlign: 'center' },
+  todoBtn: { padding: 4, marginLeft: 8 },
   pathBar: { paddingHorizontal: 16, paddingVertical: 10 },
   pathText: { fontSize: 12 },
   sessionItem: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 },
