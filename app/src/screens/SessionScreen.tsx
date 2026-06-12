@@ -327,8 +327,9 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           if (evType === 'session.status' && props.status?.type === 'idle' && props.sessionID === sessionId) { setSending(false); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
           if (evType === 'session.error') {
             setSending(false)
+            const isAbort = props.error?.name === 'MessageAbortedError'
             const errMsg = formatSessionError(props.error)
-            setError(errMsg)
+            if (!isAbort) setError(errMsg)
             setMessages((prev) => {
               const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
               const errorId = `error-${Date.now()}`
@@ -548,6 +549,11 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     }
   }, [showScrollButton, scrollButtonOpacity])
 
+  const handleAbort = useCallback(async () => {
+    setSending(false)
+    await client.abortSession(sessionId, cwd)
+  }, [client, sessionId, cwd])
+
   const handleSend = useCallback(async () => {
     if (!input.trim() || sending || !sessionId) return
     setSending(true)
@@ -675,6 +681,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                   input={input}
                   onChangeText={setInput}
                   onSend={handleSend}
+                  onStop={handleAbort}
                   sending={sending}
                   disabled={pendingPermissions.length > 0 || pendingQuestions.length > 0}
                   theme={theme}
@@ -724,6 +731,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                 input={input}
                 onChangeText={setInput}
                 onSend={handleSend}
+                onStop={handleAbort}
                 sending={sending}
                 disabled={pendingPermissions.length > 0 || pendingQuestions.length > 0}
                 theme={theme}
