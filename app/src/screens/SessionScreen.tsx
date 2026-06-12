@@ -39,7 +39,7 @@ interface Props {
 const GREETINGS = ['有什么我可以帮你的？', '开始一段新的对话吧']
 
 export default function SessionScreen({ route, navigation, themeMode, client, config }: Props) {
-  const { sessionId, title: routeTitle, agents: agentsJson, defaultAgent } = route.params || {}
+  const { sessionId, title: routeTitle, agents: agentsJson, defaultAgent, agent: routeAgent } = route.params || {}
   const agentsFromParent = useMemo<Agent[]>(() => agentsJson ? JSON.parse(agentsJson) : [], [agentsJson])
   const theme = getTheme(themeMode)
   const [messages, setMessages] = useState<Message[]>([])
@@ -58,8 +58,8 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([])
   const [pendingQuestions, setPendingQuestions] = useState<QuestionRequest[]>([])
   const [defaultModel, setDefaultModel] = useState<ModelKey | null>(null)
-  const [parentID, setParentID] = useState<string | null>(null)
-  const [childSessions, setChildSessions] = useState<{ id: string; title: string }[]>([])
+  const [parentID, setParentID] = useState<string | null>(route.params?.parentId || null)
+  const [childSessions, setChildSessions] = useState<{ id: string; title: string; agent: string }[]>([])
   const flatListRef = useRef<FlatList>(null)
   const xhrRef = useRef<XMLHttpRequest | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -142,7 +142,10 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     client.listSessionsByDirectory(cwd).then((list: any[]) => {
       const siblings = list
         .filter((s: any) => s.parentID === parentID)
-        .map((s: any) => ({ id: s.id, title: s.title || s.id.slice(0, 8) }))
+        .map((s: any) => {
+          const agentName = s.agent || (s.title || '').match(/@(\w+)/)?.[1] || ''
+          return { id: s.id, title: s.title || s.id.slice(0, 8), agent: agentName }
+        })
         .sort((a: any, b: any) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       setChildSessions(siblings)
     }).catch(() => {})
@@ -152,35 +155,29 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     if (toolCall.name !== 'task') return
     const childId = toolCall.metadata?.sessionId
     if (childId) {
-      navigation.push('Session', { projectId: childId, sessionId: childId })
+      navigation.push('Session', { projectId: childId, sessionId: childId, agent: toolCall.input?.subagent_type, parentId: sessionId })
       return
     }
     const outputMatch = typeof toolCall.output === 'string' ? toolCall.output.match(/<task id="([^"]+)"/) : null
     if (outputMatch) {
-      navigation.push('Session', { projectId: outputMatch[1], sessionId: outputMatch[1] })
+      navigation.push('Session', { projectId: outputMatch[1], sessionId: outputMatch[1], agent: toolCall.input?.subagent_type, parentId: sessionId })
     }
-  }, [navigation])
+  }, [navigation, sessionId])
 
   const subagentInfo = useMemo(() => {
     if (!parentID || !sessionId) return null
     const idx = childSessions.findIndex((s) => s.id === sessionId)
-    const agentMatch = sessionTitle.match(/@(\w+) subagent/)
-    const agentName = agentMatch ? agentMatch[1].charAt(0).toUpperCase() + agentMatch[1].slice(1) : 'Subagent'
+    const name = routeAgent || (idx >= 0 ? childSessions[idx].agent : '') || 'Subagent'
+    const agentName = name.charAt(0).toUpperCase() + name.slice(1)
     return { agentName, currentIndex: idx + 1, totalCount: childSessions.length }
-  }, [parentID, sessionId, childSessions, sessionTitle])
-
-  const handleGoToParent = useCallback(() => {
-    if (parentID) {
-      navigation.push('Session', { projectId: parentID, sessionId: parentID })
-    }
-  }, [parentID, navigation])
+  }, [parentID, sessionId, childSessions, routeAgent])
 
   const handlePrevChild = useCallback(() => {
     if (!parentID || !sessionId) return
     const idx = childSessions.findIndex((s) => s.id === sessionId)
     if (idx > 0) {
       const prev = childSessions[idx - 1]
-      navigation.replace('Session', { projectId: prev.id, sessionId: prev.id })
+      navigation.replace('Session', { projectId: prev.id, sessionId: prev.id, parentId: parentID, agent: prev.agent })
     }
   }, [parentID, sessionId, childSessions, navigation])
 
@@ -189,7 +186,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     const idx = childSessions.findIndex((s) => s.id === sessionId)
     if (idx < childSessions.length - 1) {
       const next = childSessions[idx + 1]
-      navigation.replace('Session', { projectId: next.id, sessionId: next.id })
+      navigation.replace('Session', { projectId: next.id, sessionId: next.id, parentId: parentID, agent: next.agent })
     }
   }, [parentID, sessionId, childSessions, navigation])
 
@@ -669,7 +666,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                 agentName={subagentInfo.agentName}
                 currentIndex={subagentInfo.currentIndex}
                 totalCount={subagentInfo.totalCount}
-                onParent={handleGoToParent}
                 onPrev={handlePrevChild}
                 onNext={handleNextChild}
               />
@@ -720,7 +716,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                 agentName={subagentInfo.agentName}
                 currentIndex={subagentInfo.currentIndex}
                 totalCount={subagentInfo.totalCount}
-                onParent={handleGoToParent}
                 onPrev={handlePrevChild}
                 onNext={handleNextChild}
               />
