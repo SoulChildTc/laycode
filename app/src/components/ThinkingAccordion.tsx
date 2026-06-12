@@ -1,10 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { Animated, Platform, StyleSheet, Text, TouchableOpacity, View, LayoutAnimation, UIManager } from 'react-native'
+import React, { useState, useRef, useEffect } from 'react'
+import { Animated, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import type { Theme } from '../theme'
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true)
-}
 
 interface Props {
   text: string
@@ -13,23 +9,10 @@ interface Props {
 }
 
 export default function ThinkingAccordion({ text, theme, isThinking }: Props) {
-  const [expanded, setExpanded] = useState(isThinking)
-  const prevThinking = useRef(false)
-  const expandAnim = useRef(new Animated.Value(isThinking ? 1 : 0)).current
+  const [expanded, setExpanded] = useState(false)
+  const expandAnim = useRef(new Animated.Value(0)).current
 
-  useEffect(() => {
-    if (isThinking && !prevThinking.current) {
-      setExpanded(true)
-    }
-    if (!isThinking && prevThinking.current && expanded) {
-      const timer = setTimeout(() => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
-        setExpanded(false)
-      }, 800)
-      return () => clearTimeout(timer)
-    }
-    prevThinking.current = isThinking
-  }, [isThinking])
+  const toggle = () => setExpanded(!expanded)
 
   useEffect(() => {
     Animated.spring(expandAnim, {
@@ -52,7 +35,7 @@ export default function ThinkingAccordion({ text, theme, isThinking }: Props) {
   return (
     <View style={styles.wrapper}>
       <TouchableOpacity
-        onPress={() => setExpanded(!expanded)}
+        onPress={toggle}
         activeOpacity={0.7}
         style={[styles.container, { borderLeftColor: theme.thinkingBorder }]}
       >
