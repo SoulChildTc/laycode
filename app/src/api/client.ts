@@ -294,6 +294,15 @@ export class LayCodeClient {
     return res.json()
   }
 
+  async abortSession(sessionId: string, directory?: string): Promise<boolean> {
+    try {
+      await this.v2.session.abort({ sessionID: sessionId, directory })
+      return true
+    } catch {
+      return false
+    }
+  }
+
   async deleteTodo(directory: string, id: string): Promise<boolean> {
     const params = `?directory=${encodeURIComponent(directory)}`
     const res = await fetch(`${this.baseUrl}/api/v1/todos/${encodeURIComponent(id)}${params}`, {

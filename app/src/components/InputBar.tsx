@@ -8,6 +8,7 @@ interface Props {
   input: string
   onChangeText: (text: string) => void
   onSend: () => void
+  onStop?: () => void
   sending: boolean
   disabled?: boolean
   theme: Theme
@@ -19,7 +20,7 @@ interface Props {
   onPressAgentSelector?: () => void
 }
 
-export default function InputBar({ input, onChangeText, onSend, sending, disabled, theme, inputRef, isKeyboardOpen, currentModel, onPressModelSelector, currentAgent, onPressAgentSelector }: Props) {
+export default function InputBar({ input, onChangeText, onSend, onStop, sending, disabled, theme, inputRef, isKeyboardOpen, currentModel, onPressModelSelector, currentAgent, onPressAgentSelector }: Props) {
   const bottomPad = Platform.OS === 'ios' ? (isKeyboardOpen ? 8 : 22) : 12
 
   const modelLabel = currentModel
@@ -70,21 +71,24 @@ export default function InputBar({ input, onChangeText, onSend, sending, disable
           maxLength={4000}
           editable={!disabled}
         />
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            { backgroundColor: input.trim() && !sending ? theme.accent : theme.surfaceSecondary },
-            sending && styles.sendButtonDisabled,
-          ]}
-          onPress={onSend}
-          disabled={!input.trim() || sending || disabled}
-          activeOpacity={0.8}
-        >
-          {sending
-            ? <Text style={{ color: theme.textTertiary, fontSize: 18, lineHeight: 20 }}>⋯</Text>
-            : <Feather name="arrow-up" size={18} color={input.trim() ? '#fff' : theme.textTertiary} />
-          }
-        </TouchableOpacity>
+        {sending ? (
+          <TouchableOpacity
+            style={[styles.sendButton, { backgroundColor: theme.error }]}
+            onPress={onStop}
+            activeOpacity={0.8}
+          >
+            <Feather name="square" size={16} color="#fff" />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.sendButton, { backgroundColor: input.trim() ? theme.accent : theme.surfaceSecondary }]}
+            onPress={onSend}
+            disabled={!input.trim() || disabled}
+            activeOpacity={0.8}
+          >
+            <Feather name="arrow-up" size={18} color={input.trim() ? '#fff' : theme.textTertiary} />
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   )
