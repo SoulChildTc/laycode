@@ -9,6 +9,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@opencode-ai/sdk": "file:../app/node_modules/@opencode-ai/sdk",
     "cors": "^2.8.6",
     "express": "^5.1.0",
     "http-proxy-middleware": "^3.0.0",

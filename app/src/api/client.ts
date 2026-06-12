@@ -239,6 +239,14 @@ export class LayCodeClient {
     }
   }
 
+  async restartOpencode(): Promise<{ status: string; url?: string; error?: string; message?: string }> {
+    const res = await fetch(`${this.baseUrl}/api/v1/opencode/restart`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.token}` },
+    })
+    return res.json()
+  }
+
   async health(): Promise<boolean> {
     try {
       const res = await fetch(`${this.baseUrl}/api/v1/health`)

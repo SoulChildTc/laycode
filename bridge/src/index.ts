@@ -9,7 +9,7 @@ import { createAuthMiddleware } from './auth.js'
 import { createProxyHandler } from './proxy.js'
 import { startMdns, stopMdns } from './mdns.js'
 import { startWebSocketServer, stopWebSocketServer } from './ws.js'
-import { ensureOpencode, stopOpencode } from './opencode.js'
+import { ensureOpencode, stopOpencode, restartOpencode } from './opencode.js'
 
 const config = parseArgs()
 const app = express()
@@ -50,6 +50,28 @@ app.use('/opencode-api', createProxyHandler(config))
 // Custom API for future extensions
 app.get('/api/v1/health', (_req, res) => {
   res.json({ status: 'ok', version: '0.1.0' })
+})
+
+// Restart opencode (auth-protected)
+app.post('/api/v1/opencode/restart', async (req, res) => {
+  const auth = req.headers.authorization
+  if (auth !== `Bearer ${config.token}`) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  if (process.argv.includes('--opencode-url')) {
+    return res.status(400).json({ error: 'Cannot restart external opencode' })
+  }
+
+  try {
+    const url = await restartOpencode()
+    config.opencodeUrl = url
+    stopWebSocketServer()
+    startWebSocketServer(config)
+    res.json({ status: 'ok', url })
+  } catch (err: any) {
+    res.status(500).json({ error: 'Restart failed', message: err.message })
+  }
 })
 
 // Filesystem browser (auth-protected)
