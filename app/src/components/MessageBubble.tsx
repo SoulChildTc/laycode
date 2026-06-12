@@ -40,9 +40,10 @@ interface Props {
   theme: Theme
   onToolPress?: (toolCall: any) => void
   onRevert?: () => void
+  workspaceDir?: string
 }
 
-export default function MessageBubble({ message, theme, onToolPress, onRevert }: Props) {
+export default function MessageBubble({ message, theme, onToolPress, onRevert, workspaceDir }: Props) {
   const [copied, setCopied] = useState(false)
   const [menuVisible, setMenuVisible] = useState(false)
 
@@ -114,6 +115,7 @@ export default function MessageBubble({ message, theme, onToolPress, onRevert }:
                   output={tc.output}
                   theme={theme}
                   onPress={onToolPress ? () => onToolPress(tc) : undefined}
+                  workspaceDir={workspaceDir}
                 />
               ))}
             {!!content && <ContentRenderer content={content} theme={theme} />}

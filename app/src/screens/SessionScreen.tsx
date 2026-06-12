@@ -50,10 +50,8 @@ function countRevertedMessages(messages: Message[], revertIdx: number): number {
 }
 
 function findRevertedMessageText(messages: Message[], revertIdx: number): string {
-  for (let i = revertIdx - 1; i >= 0; i--) {
-    const msg = messages[i]
-    if (msg.role === 'user') return msg.text || ''
-  }
+  const msg = messages[revertIdx]
+  if (msg.role === 'user') return msg.text || ''
   return ''
 }
 
@@ -844,7 +842,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                 if (isRevertBanner(item)) {
                   return <RevertBanner banner={item} theme={theme} onUnrevert={handleUnrevert} />
                 }
-                return <MessageBubble message={item} theme={theme} onToolPress={handleToolPress} onRevert={item.role === 'user' ? () => handleRevert(item.id) : undefined} />
+                return <MessageBubble message={item} theme={theme} onToolPress={handleToolPress} onRevert={item.role === 'user' ? () => handleRevert(item.id) : undefined} workspaceDir={cwd} />
               }}
               style={styles.list}
               contentContainerStyle={styles.listContent}

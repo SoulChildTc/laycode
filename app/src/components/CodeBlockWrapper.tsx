@@ -10,24 +10,47 @@ interface Props {
   language: string
   content: string
   theme: Theme
+  noBorder?: boolean
 }
 
-function createHighlightedLines(code: string, language: string, textColor: string): React.ReactNode[] {
+function renderHighlighted(code: string, language: string, textColor: string): React.ReactNode {
   try {
     const tree = lowlight.highlight(language, code)
-    return tree.children.map((node: any, lineIdx: number) => {
-      const children = node.children.map((token: any, tokenIdx: number) => {
-        const color = token.properties?.className?.[0]
-          ? HIGHLIGHT_COLORS[token.properties.className[0]] || textColor
-          : textColor
-        return (
-          <Text key={tokenIdx} style={{ color }}>
-            {token.value}
-          </Text>
-        )
-      })
-      return <View key={lineIdx} style={styles.lineRow}>{children}</View>
-    })
+    const lines: React.ReactNode[] = []
+    let currentLine: React.ReactElement[] = []
+    let keyCounter = 0
+
+    for (const node of tree.children as any[]) {
+      let text: string
+      let color: string
+
+      if (node.type === 'text') {
+        text = node.value
+        color = textColor
+      } else {
+        const className = node.properties?.className?.[0]
+        color = className && HIGHLIGHT_COLORS[className] ? HIGHLIGHT_COLORS[className] : textColor
+        text = node.children?.[0]?.value || ''
+      }
+
+      const parts = text.split('\n')
+      if (parts[0]) {
+        currentLine.push(<Text key={keyCounter++} style={{ color }}>{parts[0]}</Text>)
+      }
+      for (let i = 1; i < parts.length; i++) {
+        lines.push(<View key={`l${lines.length}`} style={styles.lineRow}>{currentLine}</View>)
+        currentLine = []
+        if (parts[i]) {
+          currentLine.push(<Text key={keyCounter++} style={{ color }}>{parts[i]}</Text>)
+        }
+      }
+    }
+
+    if (currentLine.length > 0) {
+      lines.push(<View key={`l${lines.length}`} style={styles.lineRow}>{currentLine}</View>)
+    }
+
+    return lines
   } catch (e) {
     return code.split('\n').map((line, i) => (
       <View key={i} style={styles.lineRow}>
@@ -71,8 +94,9 @@ let themeColors = { text: '#e8e8f0' }
 
 export default function CodeBlockWrapper({ language, content, theme }: Props) {
   const [copied, setCopied] = useState(false)
-  const lines = content.split('\n')
-  const highlighted = useRef(createHighlightedLines(content, language || 'text', theme.text))
+  const normalized = content.endsWith('\n') ? content.slice(0, -1) : content
+  const lines = normalized.split('\n')
+  const highlighted = useRef(renderHighlighted(normalized, language || 'text', theme.text))
 
   const handleCopy = useCallback(() => {
     Clipboard.setStringAsync(content).then(() => {
@@ -105,11 +129,7 @@ export default function CodeBlockWrapper({ language, content, theme }: Props) {
             ))}
           </View>
           <View style={styles.codeContent}>
-            {highlighted.current.map((node, i) => (
-              <View key={i} style={styles.lineRow}>
-                {node}
-              </View>
-            ))}
+            {highlighted.current}
           </View>
         </View>
       </ScrollView>
