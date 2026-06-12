@@ -3,10 +3,11 @@ import { createServer } from 'http'
 import { BridgeConfig } from './types.js'
 
 let wss: WebSocketServer | null = null
+let httpServer: ReturnType<typeof createServer> | null = null
 
 export function startWebSocketServer(config: BridgeConfig) {
-  const server = createServer()
-  wss = new WebSocketServer({ server })
+  httpServer = createServer()
+  wss = new WebSocketServer({ server: httpServer })
 
   wss.on('connection', (ws) => {
     const sseUrl = `${config.opencodeUrl}/global/event`
@@ -57,7 +58,7 @@ export function startWebSocketServer(config: BridgeConfig) {
   })
 
   const wsPort = config.port + 1
-  server.listen(wsPort, () => {
+  httpServer.listen(wsPort, () => {
     console.log(`  WebSocket:   ws://0.0.0.0:${wsPort}/event`)
   })
 }
@@ -65,4 +66,6 @@ export function startWebSocketServer(config: BridgeConfig) {
 export function stopWebSocketServer() {
   wss?.close()
   wss = null
+  httpServer?.close()
+  httpServer = null
 }

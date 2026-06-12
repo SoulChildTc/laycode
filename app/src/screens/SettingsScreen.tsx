@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Switch, ScrollView
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { getTheme, ThemeMode } from '../theme'
+import { LayCodeClient } from '../api/client'
 import { ServerEntry } from '../types'
 import { useServers } from '../hooks/useServers'
 
@@ -11,11 +12,12 @@ interface Props {
   themeMode: ThemeMode
   onThemeToggle: () => void
   config: ServerEntry | null
+  client: LayCodeClient | null
   onDisconnect: () => void
   onConnect: (config: ServerEntry) => void
 }
 
-export default function SettingsScreen({ navigation, themeMode, onThemeToggle, config, onDisconnect, onConnect }: Props) {
+export default function SettingsScreen({ navigation, themeMode, onThemeToggle, config, client, onDisconnect, onConnect }: Props) {
   const theme = getTheme(themeMode)
   const isDark = themeMode === 'dark'
   const { servers, add, update, remove, connect, reload } = useServers()
@@ -25,6 +27,7 @@ export default function SettingsScreen({ navigation, themeMode, onThemeToggle, c
   const [port, setPort] = useState('8079')
   const [token, setToken] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [restarting, setRestarting] = useState(false)
 
   useEffect(() => {
     reload()
@@ -85,6 +88,31 @@ export default function SettingsScreen({ navigation, themeMode, onThemeToggle, c
     }
   }
 
+  const handleRestart = async () => {
+    if (!client || restarting) return
+    Alert.alert('重启 OpenCode', '确定要重启 OpenCode 服务吗？', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '重启',
+        onPress: async () => {
+          setRestarting(true)
+          try {
+            const result = await client.restartOpencode()
+            if (result.status === 'ok') {
+              Alert.alert('已重启', 'OpenCode 服务已重新启动')
+            } else {
+              Alert.alert('重启失败', result.message || result.error || '未知错误')
+            }
+          } catch (err: any) {
+            Alert.alert('重启失败', err.message)
+          } finally {
+            setRestarting(false)
+          }
+        },
+      },
+    ])
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <Text style={[styles.pageTitle, { color: theme.text }]}>设置</Text>
@@ -109,6 +137,19 @@ export default function SettingsScreen({ navigation, themeMode, onThemeToggle, c
             <Text style={[styles.rowLabel, { color: theme.error, marginLeft: 8 }]}>断开连接</Text>
           </TouchableOpacity>
         </View>
+
+        {/* OpenCode section */}
+        {client && (
+          <View style={[styles.section, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>OpenCode 服务</Text>
+            <TouchableOpacity style={styles.row} onPress={handleRestart} disabled={restarting}>
+              <Feather name="refresh-cw" size={16} color={restarting ? theme.textTertiary : theme.accent} />
+              <Text style={[styles.rowLabel, { color: restarting ? theme.textTertiary : theme.text, marginLeft: 8 }]}>
+                {restarting ? '重启中...' : '重启 OpenCode'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Bridge servers section */}
         <View style={[styles.section, { backgroundColor: theme.surface, borderColor: theme.border }]}>

@@ -63,6 +63,7 @@ function MainTabs({ themeMode, client, config, navigation: stackNav, onThemeTogg
             themeMode={themeMode}
             onThemeToggle={onThemeToggle}
             config={config}
+            client={client}
             onDisconnect={onDisconnect}
             onConnect={onConnect}
           />
