@@ -54,8 +54,29 @@ export interface UserMsg {
 
 export type Message = UserMsg | AssistantMsg
 
-export function isAssistant(msg: Message): msg is AssistantMsg {
+export interface RevertBannerMsg {
+  id: string
+  role: 'revert-banner'
+  revertedCount: number
+  diffFiles: { filename: string; additions: number; deletions: number }[]
+}
+
+export type ListItem = Message | RevertBannerMsg
+
+export function isRevertBanner(item: ListItem): item is RevertBannerMsg {
+  return item.role === 'revert-banner'
+}
+
+export function isAssistant(msg: Message | ListItem): msg is AssistantMsg {
   return msg.role === 'assistant'
+}
+
+export function isUser(msg: Message | ListItem): msg is UserMsg {
+  return msg.role === 'user'
+}
+
+export function isMessage(item: ListItem): item is Message {
+  return item.role === 'user' || item.role === 'assistant'
 }
 
 export interface ModelInfo {
