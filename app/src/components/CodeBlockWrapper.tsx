@@ -1,5 +1,6 @@
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useRef, useState, useCallback } from 'react'
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Platform } from 'react-native'
+import * as Clipboard from 'expo-clipboard'
 import { createLowlight, common } from 'lowlight'
 
 const lowlight = createLowlight(common)
@@ -70,14 +71,15 @@ let themeColors = { text: '#e8e8f0' }
 
 export default function CodeBlockWrapper({ language, content, theme }: Props) {
   const [copied, setCopied] = useState(false)
-
   const lines = content.split('\n')
   const highlighted = useRef(createHighlightedLines(content, language || 'text', theme.text))
 
   const handleCopy = useCallback(() => {
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }, [])
+    Clipboard.setStringAsync(content).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }).catch(() => {})
+  }, [content])
 
   return (
     <View style={[styles.container, { backgroundColor: theme.codeBg, borderColor: theme.border }]}>

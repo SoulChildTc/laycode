@@ -12,12 +12,14 @@ import PermissionPrompt from '../components/PermissionPrompt'
 import QuestionPrompt from '../components/QuestionPrompt'
 import ModelSelectorModal from '../components/ModelSelectorModal'
 import AgentSelectorModal from '../components/AgentSelectorModal'
+import RevertBanner from '../components/RevertBanner'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import { useAgents } from '../hooks/useAgents'
-import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, QuestionRequest, ServerEntry } from '../types'
-import { mapToolStatus, isAssistant } from '../types'
+import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, QuestionRequest, ServerEntry, ListItem, RevertBannerMsg } from '../types'
+import { mapToolStatus, isAssistant, isRevertBanner } from '../types'
 import { stripThinking } from '../utils/segmentParts'
 import { storageKey } from '../utils/storage'
+import { parseRevertDiff } from '../utils/revertDiff'
 
 function formatSessionError(error: any): string {
   const name = error?.name || ''
@@ -26,6 +28,33 @@ function formatSessionError(error: any): string {
   const parts = [name, message].filter(Boolean)
   if (statusCode) parts.splice(1, 0, String(statusCode))
   return parts.join(' ') || 'Unknown error'
+}
+
+function buildRevertedList(messages: Message[], revertedCount: number, diffFiles: { filename: string; additions: number; deletions: number }[]): ListItem[] {
+  const banner: RevertBannerMsg = {
+    id: `revert-banner`,
+    role: 'revert-banner',
+    revertedCount,
+    diffFiles,
+  }
+  const list: ListItem[] = [banner, ...messages.reverse()]
+  return list
+}
+
+function countRevertedMessages(messages: Message[], revertIdx: number): number {
+  let count = 0
+  for (let i = revertIdx; i < messages.length; i++) {
+    if (messages[i].role === 'user') count++
+  }
+  return count
+}
+
+function findRevertedMessageText(messages: Message[], revertIdx: number): string {
+  for (let i = revertIdx - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role === 'user') return msg.text || ''
+  }
+  return ''
 }
 
 interface Props {
@@ -42,7 +71,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const { sessionId, title: routeTitle, agents: agentsJson, defaultAgent, agent: routeAgent } = route.params || {}
   const agentsFromParent = useMemo<Agent[]>(() => agentsJson ? JSON.parse(agentsJson) : [], [agentsJson])
   const theme = getTheme(themeMode)
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<ListItem[]>([])
   const [sessionTitle, setSessionTitle] = useState(routeTitle || sessionId?.slice(0, 8) || '')
   const [cwd, setCwd] = useState('')
   const [input, setInput] = useState('')
@@ -58,6 +87,8 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([])
   const [pendingQuestions, setPendingQuestions] = useState<QuestionRequest[]>([])
   const [defaultModel, setDefaultModel] = useState<ModelKey | null>(null)
+  const [revertMessageId, setRevertMessageId] = useState<string | null>(null)
+  const [revertDiff, setRevertDiff] = useState<string | null>(null)
   const [parentID, setParentID] = useState<string | null>(route.params?.parentId || null)
   const [childSessions, setChildSessions] = useState<{ id: string; title: string; agent: string }[]>([])
   const flatListRef = useRef<FlatList>(null)
@@ -112,6 +143,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       if (data?.info?.parentID) setParentID(data.info.parentID)
       if (data?.directory) setCwd(data.directory)
       else if (data?.info?.directory) setCwd(data.info.directory)
+      if (data?.revert?.messageID) setRevertMessageId(data.revert.messageID)
     }).catch(() => {})
   }, [sessionId])
 
@@ -192,7 +224,13 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
   useEffect(() => {
     if (!sessionId) return
-    client.getMessages(sessionId).then((raw: any[]) => {
+
+    const loadSessionAndMessages = async () => {
+      const sessionData = await client.getSession(sessionId)
+      if (sessionData?.revert?.messageID) setRevertMessageId(sessionData.revert.messageID)
+      if (sessionData?.revert?.diff) setRevertDiff(sessionData.revert.diff)
+
+      const raw: any[] = await client.getMessages(sessionId)
       const m: Message[] = (raw || []).map((item: any): Message => {
         const role = item.info?.role || 'assistant'
         const id = item.info?.id || item.id
@@ -221,7 +259,20 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           })),
         }
       })
-      setMessages(m.reverse())
+
+      const revertMsgId = sessionData?.revert?.messageID
+      if (revertMsgId) {
+        const revertIdx = m.findIndex((msg) => msg.id === revertMsgId)
+        if (revertIdx >= 0) {
+          const before = m.slice(0, revertIdx)
+          const diffFiles = parseRevertDiff(sessionData?.revert?.diff || '')
+          setMessages(buildRevertedList(before, countRevertedMessages(m, revertIdx), diffFiles))
+        } else {
+          setMessages(m.reverse())
+        }
+      } else {
+        setMessages(m.reverse())
+      }
 
       const lastAssistant = (raw || []).findLast((item: any) => item.info?.role === 'assistant')
       if (lastAssistant?.info?.providerID && lastAssistant?.info?.modelID) {
@@ -230,7 +281,9 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           modelID: lastAssistant.info.modelID,
         })
       }
-    }).catch((e) => setError(`加载消息失败: ${e.message}`))
+    }
+
+    loadSessionAndMessages().catch((e) => setError(`加载消息失败: ${e.message}`))
 
     client.getProviders().then((res) => {
       setProviders(res.providers)
@@ -367,7 +420,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                 m.id === msgID
                   ? m.role === 'assistant'
                     ? { ...m, reasoning: { text: partText, isActive: false } }
-                    : { ...m, role: 'assistant', reasoning: { text: partText, isActive: false }, content: m.text || '', toolCalls: [] }
+                    : { ...m, role: 'assistant', reasoning: { text: partText, isActive: false }, content: m.role === 'user' ? m.text : '', toolCalls: [] }
                   : m
               ))
               continue
@@ -441,12 +494,12 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                     if (isAssistant(m)) {
                       return { ...m, reasoning: { ...m.reasoning, text: m.reasoning.text + delta } }
                     }
-                    return { ...m, role: 'assistant', reasoning: { text: delta, isActive: true }, content: m.text || '', toolCalls: [] }
+                    return { ...m, role: 'assistant', reasoning: { text: delta, isActive: true }, content: m.role === 'user' ? m.text : '', toolCalls: [] }
                   }
                   if (isAssistant(m)) {
                     return { ...m, content: m.content + delta }
                   }
-                  return { ...m, role: 'assistant', content: (m.text || '') + delta, reasoning: { text: '', isActive: false }, toolCalls: [] }
+                  return { ...m, role: 'assistant', content: (m.role === 'user' ? m.text : '') + delta, reasoning: { text: '', isActive: false }, toolCalls: [] }
                 })
               })
               continue
@@ -548,6 +601,91 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       }).start()
     }
   }, [showScrollButton, scrollButtonOpacity])
+
+  const handleRevert = useCallback(async (revertMessageId: string) => {
+    const sessionData = await client.revertMessage(sessionId, revertMessageId, cwd)
+    if (sessionData?.revert) {
+      setSending(false)
+      setError(null)
+      setRevertMessageId(sessionData.revert.messageID)
+      setRevertDiff(sessionData.revert.diff || null)
+
+      const raw = await client.getMessages(sessionId)
+      const m: Message[] = (raw || []).map((item: any): Message => {
+        const role = item.info?.role || 'assistant'
+        const id = item.info?.id || item.id
+        if (role === 'user') {
+          return { id, role: 'user', text: item.parts?.[0]?.text || '' }
+        }
+        const reasoningPart = (item.parts || []).find((p: any) => p.type === 'reasoning')
+        const textParts = (item.parts || []).filter((p: any) => p.type === 'text')
+        const toolParts = (item.parts || []).filter((p: any) => p.type === 'tool')
+        const errorInfo = item.info?.error
+        return {
+          id,
+          role: 'assistant',
+          reasoning: { text: reasoningPart?.text || '', isActive: false },
+          content: errorInfo ? `⚠️ ${formatSessionError(errorInfo)}` : textParts.map((p: any) => stripThinking(p.text || '')).join(''),
+          toolCalls: toolParts.map((p: any): ToolCall => ({
+            id: p.id,
+            name: p.tool || p.name || '',
+            status: mapToolStatus(p.state?.status || 'completed'),
+            input: p.state?.input,
+            output: p.state?.output,
+            metadata: p.metadata,
+          })),
+        }
+      })
+
+      const revertIdx = m.findIndex((msg) => msg.id === revertMessageId)
+      if (revertIdx >= 0) {
+        const before = m.slice(0, revertIdx)
+        const diffFiles = parseRevertDiff(sessionData.revert.diff || '')
+        const revertedText = findRevertedMessageText(m, revertIdx)
+        setMessages(buildRevertedList(before, countRevertedMessages(m, revertIdx), diffFiles))
+        if (revertedText) setInput(revertedText)
+      } else {
+        setMessages(m.reverse())
+      }
+    }
+  }, [client, sessionId, cwd])
+
+  const handleUnrevert = useCallback(async () => {
+    const ok = await client.unrevertMessage(sessionId, cwd)
+    if (ok) {
+      setRevertMessageId(null)
+      setRevertDiff(null)
+      setError(null)
+
+      const raw = await client.getMessages(sessionId)
+      const m: Message[] = (raw || []).map((item: any): Message => {
+        const role = item.info?.role || 'assistant'
+        const id = item.info?.id || item.id
+        if (role === 'user') {
+          return { id, role: 'user', text: item.parts?.[0]?.text || '' }
+        }
+        const reasoningPart = (item.parts || []).find((p: any) => p.type === 'reasoning')
+        const textParts = (item.parts || []).filter((p: any) => p.type === 'text')
+        const toolParts = (item.parts || []).filter((p: any) => p.type === 'tool')
+        const errorInfo = item.info?.error
+        return {
+          id,
+          role: 'assistant',
+          reasoning: { text: reasoningPart?.text || '', isActive: false },
+          content: errorInfo ? `⚠️ ${formatSessionError(errorInfo)}` : textParts.map((p: any) => stripThinking(p.text || '')).join(''),
+          toolCalls: toolParts.map((p: any): ToolCall => ({
+            id: p.id,
+            name: p.tool || p.name || '',
+            status: mapToolStatus(p.state?.status || 'completed'),
+            input: p.state?.input,
+            output: p.state?.output,
+            metadata: p.metadata,
+          })),
+        }
+      })
+      setMessages(m.reverse())
+    }
+  }, [client, sessionId, cwd])
 
   const handleAbort = useCallback(async () => {
     setSending(false)
@@ -702,7 +840,12 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
               inverted
               data={messages}
               keyExtractor={(item) => item.id}
-              renderItem={({ item }) => <MessageBubble message={item} theme={theme} onToolPress={handleToolPress} />}
+              renderItem={({ item }: { item: ListItem }) => {
+                if (isRevertBanner(item)) {
+                  return <RevertBanner banner={item} theme={theme} onUnrevert={handleUnrevert} />
+                }
+                return <MessageBubble message={item} theme={theme} onToolPress={handleToolPress} onRevert={item.role === 'user' ? () => handleRevert(item.id) : undefined} />
+              }}
               style={styles.list}
               contentContainerStyle={styles.listContent}
               onScroll={handleScroll}

@@ -294,6 +294,24 @@ export class LayCodeClient {
     return res.json()
   }
 
+  async revertMessage(sessionId: string, messageId?: string, directory?: string): Promise<any> {
+    try {
+      const res = await this.v2.session.revert({ sessionID: sessionId, messageID: messageId, directory })
+      return res.data || null
+    } catch {
+      return null
+    }
+  }
+
+  async unrevertMessage(sessionId: string, directory?: string): Promise<boolean> {
+    try {
+      await this.v2.session.unrevert({ sessionID: sessionId, directory })
+      return true
+    } catch {
+      return false
+    }
+  }
+
   async abortSession(sessionId: string, directory?: string): Promise<boolean> {
     try {
       await this.v2.session.abort({ sessionID: sessionId, directory })
