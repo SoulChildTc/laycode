@@ -519,7 +519,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             }
 
             if (evType === 'permission.asked') {
-              if (props.sessionID !== sessionId) continue
               const req = props as PermissionRequest
               setPendingPermissions((prev) => {
                 const exists = prev.find((p) => p.id === req.id)
@@ -530,7 +529,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             }
 
             if (evType === 'permission.replied') {
-              if (props.sessionID !== sessionId) continue
               const { permissionID, requestID } = props
               const id = requestID || permissionID
               if (id) {
@@ -540,7 +538,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             }
 
             if (evType === 'question.asked') {
-              if (props.sessionID !== sessionId) continue
               const req = props as QuestionRequest
               setPendingQuestions((prev) => {
                 const exists = prev.find((q) => q.id === req.id)
@@ -551,7 +548,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             }
 
             if (evType === 'question.replied' || evType === 'question.rejected') {
-              if (props.sessionID !== sessionId) continue
               const { requestID, questionID } = props
               const id = requestID || questionID
               if (id) {

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback,
   StyleSheet, Animated, Modal, Platform, ScrollView, Keyboard,
+  KeyboardAvoidingView,
 } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import type { Theme } from '../theme'
@@ -84,7 +85,6 @@ function getBody(permission: string, metadata: Record<string, any>, patterns: st
 export default function PermissionPrompt({ request, theme, onReply }: Props) {
   const [stage, setStage] = useState<Stage>('prompt')
   const [rejectMessage, setRejectMessage] = useState('')
-  const [keyboardPad, setKeyboardPad] = useState(0)
   const slideAnim = useRef(new Animated.Value(0)).current
   const rejectInputRef = useRef<TextInput>(null)
   const icon = getIcon(request.permission)
@@ -105,16 +105,6 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
       setTimeout(() => rejectInputRef.current?.focus(), 400)
     }
   }, [stage])
-
-  useEffect(() => {
-    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
-      setKeyboardPad(e.endCoordinates.height)
-    })
-    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => {
-      setKeyboardPad(0)
-    })
-    return () => { show.remove(); hide.remove() }
-  }, [])
 
   const dismissKeyboard = () => Keyboard.dismiss()
 
@@ -140,11 +130,12 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={handleRejectCancel}>
-      <View style={styles.overlay}>
-        <TouchableWithoutFeedback onPress={dismissKeyboard}>
-          <View style={styles.overlayTouchable} />
-        </TouchableWithoutFeedback>
-        <Animated.View style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.border, paddingBottom: stage === 'reject' ? keyboardPad + (Platform.OS === 'ios' ? 36 : 20) : Platform.OS === 'ios' ? 36 : 20 }, slideIn]}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={styles.overlay}>
+          <TouchableWithoutFeedback onPress={dismissKeyboard}>
+            <View style={styles.overlayTouchable} />
+          </TouchableWithoutFeedback>
+          <Animated.View style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.border }, slideIn]}>
           {stage === 'prompt' && (
             <>
               <View style={styles.sheetHeader}>
@@ -237,23 +228,25 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
           )}
 
           {stage === 'reject' && (
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.rejectScrollContent}>
+            <>
               <View style={styles.sheetHeader}>
                 <Feather name="x-circle" size={18} color={theme.error} />
                 <Text style={[styles.sheetTitle, { color: theme.text }]}>Reject permission</Text>
               </View>
-              <View style={[styles.rejectInputWrap, { backgroundColor: theme.codeBg, borderColor: theme.borderLight }]}>
-                <TextInput
-                  ref={rejectInputRef}
-                  style={[styles.rejectInput, { color: theme.text }]}
-                  value={rejectMessage}
-                  onChangeText={setRejectMessage}
-                  placeholder="Tell OpenCode what to do differently..."
-                  placeholderTextColor={theme.textTertiary}
-                  multiline
-                  returnKeyType="default"
-                />
-              </View>
+              <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 160 }}>
+                <View style={[styles.rejectInputWrap, { backgroundColor: theme.codeBg, borderColor: theme.borderLight }]}>
+                  <TextInput
+                    ref={rejectInputRef}
+                    style={[styles.rejectInput, { color: theme.text }]}
+                    value={rejectMessage}
+                    onChangeText={setRejectMessage}
+                    placeholder="Tell OpenCode what to do differently..."
+                    placeholderTextColor={theme.textTertiary}
+                    multiline
+                    returnKeyType="default"
+                  />
+                </View>
+              </ScrollView>
               <View style={styles.buttonRow}>
                 <TouchableOpacity
                   style={[styles.actionBtn, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
@@ -271,10 +264,11 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
                   <Text style={[styles.actionBtnText, styles.actionBtnPrimaryText]}>Reject</Text>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+            </>
           )}
         </Animated.View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
@@ -297,6 +291,7 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: Platform.OS === 'ios' ? 36 : 20,
     gap: 14,
+    maxHeight: '80%',
   },
   sheetHeader: {
     flexDirection: 'row',
@@ -383,9 +378,6 @@ const styles = StyleSheet.create({
   },
   patternItem: {
     fontSize: 12,
-  },
-  rejectScrollContent: {
-    gap: 14,
   },
   rejectInputWrap: {
     borderRadius: 10,
