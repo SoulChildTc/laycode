@@ -8,12 +8,11 @@ interface Props {
   agentName: string
   currentIndex: number
   totalCount: number
-  onParent: () => void
   onPrev: () => void
   onNext: () => void
 }
 
-export default function SubagentFooter({ theme, agentName, currentIndex, totalCount, onParent, onPrev, onNext }: Props) {
+export default function SubagentFooter({ theme, agentName, currentIndex, totalCount, onPrev, onNext }: Props) {
   return (
     <View style={[styles.container, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
       <View style={styles.info}>
@@ -23,10 +22,6 @@ export default function SubagentFooter({ theme, agentName, currentIndex, totalCo
         </Text>
       </View>
       <View style={styles.actions}>
-        <TouchableOpacity style={[styles.button, { backgroundColor: theme.surfaceSecondary }]} onPress={onParent} activeOpacity={0.7}>
-          <Feather name="arrow-up" size={16} color={theme.text} />
-          <Text style={[styles.buttonText, { color: theme.textSecondary }]}>Parent</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={[styles.button, { backgroundColor: theme.surfaceSecondary }]} onPress={onPrev} activeOpacity={0.7}>
           <Feather name="chevron-left" size={16} color={theme.text} />
           <Text style={[styles.buttonText, { color: theme.textSecondary }]}>Prev</Text>
