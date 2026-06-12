@@ -57,6 +57,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [agentSelectorVisible, setAgentSelectorVisible] = useState(false)
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([])
   const [pendingQuestions, setPendingQuestions] = useState<QuestionRequest[]>([])
+  const [defaultModel, setDefaultModel] = useState<ModelKey | null>(null)
   const [parentID, setParentID] = useState<string | null>(null)
   const [childSessions, setChildSessions] = useState<{ id: string; title: string }[]>([])
   const flatListRef = useRef<FlatList>(null)
@@ -236,6 +237,11 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
     client.getProviders().then((res) => {
       setProviders(res.providers)
+      const defaults = Object.entries(res.default)
+      if (defaults.length > 0) {
+        const [providerID, modelID] = defaults[0]
+        setDefaultModel({ providerID, modelID })
+      }
     }).catch(() => {})
 
     AsyncStorage.getItem(sessionModelKey).then((raw) => {
@@ -248,6 +254,12 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       } catch {}
     }).catch(() => {})
   }, [sessionId])
+
+  useEffect(() => {
+    if (defaultModel && !currentModel) {
+      setCurrentModel(defaultModel)
+    }
+  }, [defaultModel])
 
   const saveSessionModel = useCallback((key: ModelKey) => {
     AsyncStorage.getItem(sessionModelKey).then((raw) => {
@@ -510,15 +522,16 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   }, [sessionId])
 
   const getModelDisplayName = useCallback((key: ModelKey | null): string => {
-    if (!key) return ''
+    const k = key || defaultModel
+    if (!k) return ''
     for (const p of providers) {
-      if (p.id === key.providerID) {
-        const m = p.models[key.modelID]
-        return m?.name || key.modelID
+      if (p.id === k.providerID) {
+        const m = p.models[k.modelID]
+        return m?.name || k.modelID
       }
     }
-    return key.modelID
-  }, [providers])
+    return k.modelID
+  }, [providers, defaultModel])
 
   const scrollToBottom = useCallback((animated = true) => {
     flatListRef.current?.scrollToIndex({ index: 0, animated })
