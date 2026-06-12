@@ -89,6 +89,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [revertDiff, setRevertDiff] = useState<string | null>(null)
   const [parentID, setParentID] = useState<string | null>(route.params?.parentId || null)
   const [childSessions, setChildSessions] = useState<{ id: string; title: string; agent: string }[]>([])
+  const [showChildSessions, setShowChildSessions] = useState(false)
   const flatListRef = useRef<FlatList>(null)
   const xhrRef = useRef<XMLHttpRequest | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -191,8 +192,22 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     const outputMatch = typeof toolCall.output === 'string' ? toolCall.output.match(/<task id="([^"]+)"/) : null
     if (outputMatch) {
       navigation.push('Session', { projectId: outputMatch[1], sessionId: outputMatch[1], agent: toolCall.input?.subagent_type, parentId: sessionId })
+      return
     }
-  }, [navigation, sessionId])
+    if (cwd) {
+      client.listSessionsByDirectory(cwd).then((list: any[]) => {
+        const children = list
+          .filter((s: any) => s.parentID === sessionId)
+          .map((s: any) => {
+            const agentName = s.agent || (s.title || '').match(/@(\w+)/)?.[1] || ''
+            return { id: s.id, title: s.title || s.id.slice(0, 8), agent: agentName }
+          })
+          .sort((a: any, b: any) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        setChildSessions(children)
+      }).catch(() => {})
+    }
+    setShowChildSessions(true)
+  }, [navigation, sessionId, client, cwd])
 
   const subagentInfo = useMemo(() => {
     if (!parentID || !sessionId) return null
@@ -253,7 +268,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             status: mapToolStatus(p.state?.status || 'completed'),
             input: p.state?.input,
             output: p.state?.output,
-            metadata: p.metadata,
+            metadata: { ...(p.state?.metadata || {}), ...(p.metadata || {}) },
           })),
         }
       })
@@ -456,11 +471,11 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                   status: mapToolStatus(part.state?.status || 'running'),
                   input: part.state?.input,
                   output: part.state?.output,
-                  metadata: part.metadata,
+                  metadata: { ...(part.state?.metadata || {}), ...(part.metadata || {}) },
                 }
                 const existing = m.toolCalls.find((t) => t.id === part.id)
                 if (existing) {
-                  return { ...m, toolCalls: m.toolCalls.map((t) => t.id === part.id ? tc : t) }
+                  return { ...m, toolCalls: m.toolCalls.map((t) => t.id === part.id ? { ...tc, metadata: { ...existing.metadata, ...tc.metadata } } : t) }
                 }
                 return { ...m, toolCalls: [...m.toolCalls, tc] }
               }))
@@ -630,7 +645,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             status: mapToolStatus(p.state?.status || 'completed'),
             input: p.state?.input,
             output: p.state?.output,
-            metadata: p.metadata,
+            metadata: { ...(p.state?.metadata || {}), ...(p.metadata || {}) },
           })),
         }
       })
@@ -677,7 +692,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             status: mapToolStatus(p.state?.status || 'completed'),
             input: p.state?.input,
             output: p.state?.output,
-            metadata: p.metadata,
+            metadata: { ...(p.state?.metadata || {}), ...(p.metadata || {}) },
           })),
         }
       })
@@ -957,6 +972,48 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           <TouchableOpacity style={styles.renameOverlayDismiss} activeOpacity={1} onPress={() => setShowRenameModal(false)} />
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal visible={showChildSessions} transparent animationType="slide" onRequestClose={() => setShowChildSessions(false)}>
+        <SafeAreaView style={[styles.childSessionsOverlay, { backgroundColor: theme.background }]}>
+          <View style={[styles.childSessionsHeader, { borderBottomColor: theme.border }]}>
+            <Text style={[styles.childSessionsTitle, { color: theme.text }]}>子 Agent</Text>
+            <TouchableOpacity onPress={() => setShowChildSessions(false)}>
+              <Feather name="x" size={22} color={theme.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          {childSessions.length === 0 ? (
+            <View style={styles.childSessionsEmpty}>
+              <Text style={[styles.childSessionsEmptyText, { color: theme.textTertiary }]}>暂无子 Agent</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={childSessions}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => {
+                const agentDisplay = item.agent ? item.agent.charAt(0).toUpperCase() + item.agent.slice(1) : 'Subagent'
+                return (
+                  <TouchableOpacity
+                    style={[styles.childSessionItem, { borderBottomColor: theme.border }]}
+                    onPress={() => {
+                      setShowChildSessions(false)
+                      navigation.push('Session', { projectId: item.id, sessionId: item.id, agent: item.agent, parentId: sessionId })
+                    }}
+                  >
+                    <Text style={styles.childSessionIcon}>🤖</Text>
+                    <View style={styles.childSessionContent}>
+                      <Text style={[styles.childSessionAgent, { color: theme.text }]}>{agentDisplay}</Text>
+                      {item.title ? (
+                        <Text style={[styles.childSessionText, { color: theme.textTertiary }]} numberOfLines={1}>{item.title}</Text>
+                      ) : null}
+                    </View>
+                    <Feather name="chevron-right" size={14} color={theme.textTertiary} />
+                  </TouchableOpacity>
+                )
+              }}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -1002,4 +1059,15 @@ const styles = StyleSheet.create({
   renameBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
   renameBtnPrimary: {},
   renameBtnText: { fontSize: 15, fontWeight: '500' },
+
+  childSessionsOverlay: { flex: 1, marginTop: Platform.OS === 'ios' ? 44 : 0 },
+  childSessionsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 },
+  childSessionsTitle: { fontSize: 17, fontWeight: '600' },
+  childSessionsEmpty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  childSessionsEmptyText: { fontSize: 15 },
+  childSessionItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5, gap: 12 },
+  childSessionIcon: { fontSize: 20 },
+  childSessionContent: { flex: 1, gap: 2 },
+  childSessionAgent: { fontSize: 15, fontWeight: '500' },
+  childSessionText: { fontSize: 13 },
 })
