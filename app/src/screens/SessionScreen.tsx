@@ -55,6 +55,37 @@ function findRevertedMessageText(messages: Message[], revertIdx: number): string
   return ''
 }
 
+function parseMessages(raw: any[]): Message[] {
+  return (raw || []).map((item: any): Message => {
+    const role = item.info?.role || 'assistant'
+    const id = item.info?.id || item.id
+    if (role === 'user') {
+      return { id, role: 'user', text: item.parts?.[0]?.text || '' }
+    }
+    const reasoningPart = (item.parts || []).find((p: any) => p.type === 'reasoning')
+    const textParts = (item.parts || []).filter((p: any) => p.type === 'text')
+    const toolParts = (item.parts || []).filter((p: any) => p.type === 'tool')
+    const errorInfo = item.info?.error
+    const errorContent = errorInfo
+      ? `⚠️ ${formatSessionError(errorInfo)}`
+      : ''
+    return {
+      id,
+      role: 'assistant',
+      reasoning: { text: reasoningPart?.text || '', isActive: false },
+      content: errorContent || textParts.map((p: any) => stripThinking(p.text || '')).join(''),
+      toolCalls: toolParts.map((p: any): ToolCall => ({
+        id: p.id,
+        name: p.tool || p.name || '',
+        status: mapToolStatus(p.state?.status || 'completed'),
+        input: p.state?.input,
+        output: p.state?.output,
+        metadata: { ...(p.state?.metadata || {}), ...(p.metadata || {}) },
+      })),
+    }
+  })
+}
+
 interface Props {
   route: any
   navigation: any
@@ -140,38 +171,109 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
   const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
 
-  useEffect(() => {
+  const reloadSession = async () => {
     if (!sessionId) return
-    client.getSession(sessionId).then((data: any) => {
-      if (data?.info?.title) setSessionTitle(data.info.title)
-      if (data?.info?.parentID) setParentID(data.info.parentID)
-      if (data?.directory) setCwd(data.directory)
-      else if (data?.info?.directory) setCwd(data.info.directory)
-      if (data?.revert?.messageID) setRevertMessageId(data.revert.messageID)
-    }).catch(() => {})
+
+    try {
+      const [sessionData, raw, providersRes] = await Promise.all([
+        client.getSession(sessionId).catch(() => null),
+        client.getMessages(sessionId).catch(() => [] as any[]),
+        client.getProviders().catch(() => null),
+      ])
+
+      // Session metadata
+      if (sessionData?.info?.title) setSessionTitle(sessionData.info.title)
+      if (sessionData?.info?.parentID) setParentID(sessionData.info.parentID)
+      const dir = sessionData?.directory || sessionData?.info?.directory
+      if (dir) setCwd(dir)
+      if (sessionData?.revert?.messageID) setRevertMessageId(sessionData.revert.messageID)
+      if (sessionData?.revert?.diff) setRevertDiff(sessionData.revert.diff)
+
+      // Messages
+      if (raw.length > 0) {
+        const m = parseMessages(raw)
+        const revertMsgId = sessionData?.revert?.messageID
+        if (revertMsgId) {
+          const revertIdx = m.findIndex((msg) => msg.id === revertMsgId)
+          if (revertIdx >= 0) {
+            const before = m.slice(0, revertIdx)
+            const diffFiles = parseRevertDiff(sessionData?.revert?.diff || '')
+            setMessages(buildRevertedList(before, countRevertedMessages(m, revertIdx), diffFiles))
+          } else {
+            setMessages(m.reverse())
+          }
+        } else {
+          setMessages(m.reverse())
+        }
+
+        const lastAssistant = (raw as any[]).findLast((item: any) => item.info?.role === 'assistant')
+        if (lastAssistant?.info?.providerID && lastAssistant?.info?.modelID) {
+          setCurrentModel({
+            providerID: lastAssistant.info.providerID,
+            modelID: lastAssistant.info.modelID,
+          })
+        }
+        if (lastAssistant?.info?.tokens) {
+          const t = lastAssistant.info.tokens
+          setContextTokens(t.input + t.output + t.reasoning + (t.cache?.read || 0) + (t.cache?.write || 0))
+        }
+
+        // Infer session activity from running tool calls
+        const hasRunning = (raw as any[]).some((item: any) => {
+          if (item.info?.role !== 'assistant') return false
+          return (item.parts || []).some((p: any) => p.type === 'tool' && (p.state?.status === 'running' || p.state?.status === 'pending'))
+        })
+        setSending(hasRunning)
+      }
+
+      // Providers
+      if (providersRes) {
+        setProviders(providersRes.providers)
+        const defaults = Object.entries(providersRes.default)
+        if (defaults.length > 0) {
+          const [providerID, modelID] = defaults[defaults.length - 1]
+          setDefaultModel({ providerID, modelID })
+        }
+      }
+
+      // Saved model preference
+      AsyncStorage.getItem(sessionModelKey).then((raw) => {
+        if (!raw) return
+        try {
+          const saved: Record<string, ModelKey> = JSON.parse(raw)
+          if (saved[sessionId]) {
+            setCurrentModel(saved[sessionId])
+          }
+        } catch {}
+      }).catch(() => {})
+
+      // Pending permissions & questions (need dir)
+      if (dir) {
+        const [reqs, qs] = await Promise.all([
+          client.listPendingPermissions(dir).catch(() => []),
+          client.listPendingQuestions(dir).catch(() => []),
+        ])
+        if (reqs.length > 0) {
+          setPendingPermissions((prev) => {
+            const existing = new Set(prev.map((p) => p.id))
+            return [...prev, ...reqs.filter((r: any) => !existing.has(r.id))]
+          })
+        }
+        if (qs.length > 0) {
+          setPendingQuestions((prev) => {
+            const existing = new Set(prev.map((q) => q.id))
+            return [...prev, ...qs.filter((r: any) => !existing.has(r.id))]
+          })
+        }
+      }
+    } catch (e: any) {
+      setError(`加载失败: ${e.message}`)
+    }
+  }
+
+  useEffect(() => {
+    if (sessionId) reloadSession()
   }, [sessionId])
-
-  useEffect(() => {
-    if (!sessionId || !cwd) return
-    client.listPendingPermissions(cwd).then((reqs) => {
-      if (reqs.length === 0) return
-      setPendingPermissions((prev) => {
-        const existing = new Set(prev.map((p) => p.id))
-        return [...prev, ...reqs.filter((r) => !existing.has(r.id))]
-      })
-    }).catch(() => {})
-  }, [sessionId, cwd])
-
-  useEffect(() => {
-    if (!sessionId || !cwd) return
-    client.listPendingQuestions(cwd).then((reqs) => {
-      if (reqs.length === 0) return
-      setPendingQuestions((prev) => {
-        const existing = new Set(prev.map((q) => q.id))
-        return [...prev, ...reqs.filter((r) => !existing.has(r.id))]
-      })
-    }).catch(() => {})
-  }, [sessionId, cwd])
 
   useEffect(() => {
     if (!parentID || !cwd) return
@@ -239,93 +341,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       navigation.replace('Session', { projectId: next.id, sessionId: next.id, parentId: parentID, agent: next.agent })
     }
   }, [parentID, sessionId, childSessions, navigation])
-
-  useEffect(() => {
-    if (!sessionId) return
-
-    const loadSessionAndMessages = async () => {
-      const sessionData = await client.getSession(sessionId)
-      if (sessionData?.revert?.messageID) setRevertMessageId(sessionData.revert.messageID)
-      if (sessionData?.revert?.diff) setRevertDiff(sessionData.revert.diff)
-
-      const raw: any[] = await client.getMessages(sessionId)
-      const m: Message[] = (raw || []).map((item: any): Message => {
-        const role = item.info?.role || 'assistant'
-        const id = item.info?.id || item.id
-        if (role === 'user') {
-          return { id, role: 'user', text: item.parts?.[0]?.text || '' }
-        }
-        const reasoningPart = (item.parts || []).find((p: any) => p.type === 'reasoning')
-        const textParts = (item.parts || []).filter((p: any) => p.type === 'text')
-        const toolParts = (item.parts || []).filter((p: any) => p.type === 'tool')
-        const errorInfo = item.info?.error
-        const errorContent = errorInfo
-          ? `⚠️ ${formatSessionError(errorInfo)}`
-          : ''
-        return {
-          id,
-          role: 'assistant',
-          reasoning: { text: reasoningPart?.text || '', isActive: false },
-          content: errorContent || textParts.map((p: any) => stripThinking(p.text || '')).join(''),
-          toolCalls: toolParts.map((p: any): ToolCall => ({
-            id: p.id,
-            name: p.tool || p.name || '',
-            status: mapToolStatus(p.state?.status || 'completed'),
-            input: p.state?.input,
-            output: p.state?.output,
-            metadata: { ...(p.state?.metadata || {}), ...(p.metadata || {}) },
-          })),
-        }
-      })
-
-      const revertMsgId = sessionData?.revert?.messageID
-      if (revertMsgId) {
-        const revertIdx = m.findIndex((msg) => msg.id === revertMsgId)
-        if (revertIdx >= 0) {
-          const before = m.slice(0, revertIdx)
-          const diffFiles = parseRevertDiff(sessionData?.revert?.diff || '')
-          setMessages(buildRevertedList(before, countRevertedMessages(m, revertIdx), diffFiles))
-        } else {
-          setMessages(m.reverse())
-        }
-      } else {
-        setMessages(m.reverse())
-      }
-
-      const lastAssistant = (raw || []).findLast((item: any) => item.info?.role === 'assistant')
-      if (lastAssistant?.info?.providerID && lastAssistant?.info?.modelID) {
-        setCurrentModel({
-          providerID: lastAssistant.info.providerID,
-          modelID: lastAssistant.info.modelID,
-        })
-      }
-      if (lastAssistant?.info?.tokens) {
-        const t = lastAssistant.info.tokens
-        setContextTokens(t.input + t.output + t.reasoning + (t.cache?.read || 0) + (t.cache?.write || 0))
-      }
-    }
-
-    loadSessionAndMessages().catch((e) => setError(`加载消息失败: ${e.message}`))
-
-    client.getProviders().then((res) => {
-      setProviders(res.providers)
-      const defaults = Object.entries(res.default)
-      if (defaults.length > 0) {
-        const [providerID, modelID] = defaults[defaults.length - 1]
-        setDefaultModel({ providerID, modelID })
-      }
-    }).catch(() => {})
-
-    AsyncStorage.getItem(sessionModelKey).then((raw) => {
-      if (!raw) return
-      try {
-        const saved: Record<string, ModelKey> = JSON.parse(raw)
-        if (saved[sessionId]) {
-          setCurrentModel(saved[sessionId])
-        }
-      } catch {}
-    }).catch(() => {})
-  }, [sessionId])
 
   useEffect(() => {
     if (defaultModel && !currentModel) {
@@ -626,12 +641,18 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
     const onAppState = (next: AppStateStatus) => {
       if (aborted) return
-      if (appStateRef.current.match(/background/) && next === 'active') {
-        retryCountRef.current = 0
-        if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null }
-        if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
-        if (xhrRef.current) { xhrRef.current.abort(); xhrRef.current = null }
-        connect()
+      if (next === 'active') {
+        const wasBackground = appStateRef.current.match(/inactive|background/)
+        if (wasBackground) {
+          retryCountRef.current = 0
+          if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null }
+          if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+          if (xhrRef.current) { xhrRef.current.abort(); xhrRef.current = null }
+          setError('已重连')
+          setTimeout(() => setError(null), 1500)
+          reloadSession()
+          connect()
+        }
       }
       appStateRef.current = next
     }
@@ -685,31 +706,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       setRevertDiff(sessionData.revert.diff || null)
 
       const raw = await client.getMessages(sessionId)
-      const m: Message[] = (raw || []).map((item: any): Message => {
-        const role = item.info?.role || 'assistant'
-        const id = item.info?.id || item.id
-        if (role === 'user') {
-          return { id, role: 'user', text: item.parts?.[0]?.text || '' }
-        }
-        const reasoningPart = (item.parts || []).find((p: any) => p.type === 'reasoning')
-        const textParts = (item.parts || []).filter((p: any) => p.type === 'text')
-        const toolParts = (item.parts || []).filter((p: any) => p.type === 'tool')
-        const errorInfo = item.info?.error
-        return {
-          id,
-          role: 'assistant',
-          reasoning: { text: reasoningPart?.text || '', isActive: false },
-          content: errorInfo ? `⚠️ ${formatSessionError(errorInfo)}` : textParts.map((p: any) => stripThinking(p.text || '')).join(''),
-          toolCalls: toolParts.map((p: any): ToolCall => ({
-            id: p.id,
-            name: p.tool || p.name || '',
-            status: mapToolStatus(p.state?.status || 'completed'),
-            input: p.state?.input,
-            output: p.state?.output,
-            metadata: { ...(p.state?.metadata || {}), ...(p.metadata || {}) },
-          })),
-        }
-      })
+      const m: Message[] = parseMessages(raw)
 
       const revertIdx = m.findIndex((msg) => msg.id === revertMessageId)
       if (revertIdx >= 0) {
@@ -732,31 +729,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       setError(null)
 
       const raw = await client.getMessages(sessionId)
-      const m: Message[] = (raw || []).map((item: any): Message => {
-        const role = item.info?.role || 'assistant'
-        const id = item.info?.id || item.id
-        if (role === 'user') {
-          return { id, role: 'user', text: item.parts?.[0]?.text || '' }
-        }
-        const reasoningPart = (item.parts || []).find((p: any) => p.type === 'reasoning')
-        const textParts = (item.parts || []).filter((p: any) => p.type === 'text')
-        const toolParts = (item.parts || []).filter((p: any) => p.type === 'tool')
-        const errorInfo = item.info?.error
-        return {
-          id,
-          role: 'assistant',
-          reasoning: { text: reasoningPart?.text || '', isActive: false },
-          content: errorInfo ? `⚠️ ${formatSessionError(errorInfo)}` : textParts.map((p: any) => stripThinking(p.text || '')).join(''),
-          toolCalls: toolParts.map((p: any): ToolCall => ({
-            id: p.id,
-            name: p.tool || p.name || '',
-            status: mapToolStatus(p.state?.status || 'completed'),
-            input: p.state?.input,
-            output: p.state?.output,
-            metadata: { ...(p.state?.metadata || {}), ...(p.metadata || {}) },
-          })),
-        }
-      })
+      const m: Message[] = parseMessages(raw)
       setMessages(m.reverse())
     }
   }, [client, sessionId, cwd])
