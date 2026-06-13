@@ -57,7 +57,13 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
     if (!directory) return
     client.getAgents(directory).then((list) => {
       const filtered = list.filter((a) => a.mode !== 'subagent' && !a.hidden)
-      setAgents(filtered)
+      if (filtered.length > 0) {
+        setAgents(filtered)
+      } else {
+        client.getAgents().then((list2) => {
+          setAgents(list2.filter((a) => a.mode !== 'subagent' && !a.hidden))
+        }).catch(() => {})
+      }
     }).catch(() => {})
   }, [directory, client])
 
