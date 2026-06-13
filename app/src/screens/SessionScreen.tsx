@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform, Animated, Modal, KeyboardAvoidingView } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform, Animated, Modal, KeyboardAvoidingView, AppState, AppStateStatus } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -75,6 +75,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [retryCountdown, setRetryCountdown] = useState(0)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [currentModel, setCurrentModel] = useState<ModelKey | null>(null)
   const [providers, setProviders] = useState<Provider[]>([])
@@ -93,6 +94,9 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const flatListRef = useRef<FlatList>(null)
   const xhrRef = useRef<XMLHttpRequest | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryCountRef = useRef(0)
+  const appStateRef = useRef(AppState.currentState)
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const inputRef = useRef<TextInput>(null)
   const scrollButtonOpacity = useRef(new Animated.Value(0)).current
   const { keyboardOffset, isKeyboardOpen } = useKeyboardHeight()
@@ -371,6 +375,12 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       xhr.setRequestHeader('Authorization', `Bearer ${client.token}`)
 
       xhr.onprogress = () => {
+        if (retryCountRef.current > 0) {
+          retryCountRef.current = 0
+          if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+          setError('已重连')
+          setTimeout(() => setError(null), 1500)
+        }
         const fullText = xhr.responseText
         const chunk = fullText.substring(lastProcessed)
         lastProcessed = fullText.length
@@ -558,15 +568,44 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
         }
       }
 
+      let retryScheduled = false
+
+      const startCountdown = (secs: number) => {
+        setRetryCountdown(secs)
+        setError(`连接断开，${secs}s 后重试…`)
+        if (countdownRef.current) clearInterval(countdownRef.current)
+        countdownRef.current = setInterval(() => {
+          setRetryCountdown((prev) => {
+            const next = prev - 1
+            if (next <= 0) {
+              if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+              setError('正在重连…')
+              return 0
+            }
+            setError(`连接断开，${next}s 后重试…`)
+            return next
+          })
+        }, 1000)
+      }
+
       xhr.onerror = () => {
-        if (aborted) return
-        setError('SSE 连接错误')
-        retryRef.current = setTimeout(connect, 5000)
+        if (aborted || retryScheduled) return
+        retryScheduled = true
+        const count = retryCountRef.current++
+        const delay = Math.min(1000 * Math.pow(2, count), 30000)
+        const secs = Math.ceil(delay / 1000)
+        if (count >= 1) startCountdown(secs)
+        retryRef.current = setTimeout(() => { retryScheduled = false; connect() }, delay)
       }
 
       xhr.onloadend = () => {
-        if (aborted) return
-        retryRef.current = setTimeout(connect, 5000)
+        if (aborted || retryScheduled) return
+        retryScheduled = true
+        const count = retryCountRef.current++
+        const delay = Math.min(1000 * Math.pow(2, count), 30000)
+        const secs = Math.ceil(delay / 1000)
+        if (count >= 1) startCountdown(secs)
+        retryRef.current = setTimeout(() => { retryScheduled = false; connect() }, delay)
       }
 
       xhr.send()
@@ -574,10 +613,25 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
     connect()
 
+    const onAppState = (next: AppStateStatus) => {
+      if (aborted) return
+      if (appStateRef.current.match(/background/) && next === 'active') {
+        retryCountRef.current = 0
+        if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null }
+        if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+        if (xhrRef.current) { xhrRef.current.abort(); xhrRef.current = null }
+        connect()
+      }
+      appStateRef.current = next
+    }
+    const sub = AppState.addEventListener('change', onAppState)
+
     return () => {
       aborted = true
+      sub.remove()
       if (xhrRef.current) { xhrRef.current.abort(); xhrRef.current = null }
       if (retryRef.current) clearTimeout(retryRef.current)
+      if (countdownRef.current) clearInterval(countdownRef.current)
     }
   }, [sessionId])
 
@@ -791,7 +845,8 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
         </View>
 
         {error && (
-          <View style={[styles.errorBar, { backgroundColor: theme.error }]}>
+          <View style={[styles.errorBar, { backgroundColor: error === '已重连' ? theme.success : theme.error }]}>
+            <Feather name={error === '已重连' ? 'check-circle' : 'refresh-cw'} size={14} color="rgba(255,255,255,0.8)" style={{ marginRight: 6 }} />
             <Text style={styles.errorText}>{error}</Text>
             <TouchableOpacity onPress={() => setError(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Feather name="x" size={16} color="rgba(255,255,255,0.8)" />
