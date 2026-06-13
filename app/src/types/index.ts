@@ -88,6 +88,10 @@ export interface ModelInfo {
     toolcall?: boolean
   }
   status: string
+  limit?: {
+    context: number
+    output: number
+  }
 }
 
 export interface Provider {

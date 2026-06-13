@@ -147,6 +147,7 @@ export class LayCodeClient {
               toolcall: !!m.capabilities?.toolcall,
             },
             status: m.status || 'active',
+            limit: m.limit,
           } as ModelInfo,
         ])
       ),
