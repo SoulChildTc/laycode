@@ -424,8 +424,10 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           const evType: string = payload?.type || ''
           const props = payload?.properties || {}
 
-          if (evType === 'session.idle' && props.sessionID === sessionId) { setSending(false); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
-          if (evType === 'session.status' && props.status?.type === 'idle' && props.sessionID === sessionId) { setSending(false); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
+          if (evType === 'session.idle' && props.sessionID === sessionId) { setSending(false); setError(null); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
+          if (evType === 'session.status' && props.status?.type === 'idle' && props.sessionID === sessionId) { setSending(false); setError(null); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
+          if (evType === 'session.status' && props.status?.type === 'busy' && props.sessionID === sessionId) { setSending(true); continue }
+          if (evType === 'session.status' && props.status?.type === 'retry' && props.sessionID === sessionId) { setSending(true); setError(`⚠️ ${props.status.message}`); continue }
           if (evType === 'session.error') {
             setSending(false)
             const isAbort = props.error?.name === 'MessageAbortedError'
