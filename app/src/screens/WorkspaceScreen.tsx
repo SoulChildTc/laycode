@@ -1,14 +1,20 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
-import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, Alert } from 'react-native'
+import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, Animated, Modal, LayoutAnimation, Platform, UIManager } from 'react-native'
+import { Swipeable } from 'react-native-gesture-handler'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
+import * as Clipboard from 'expo-clipboard'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient } from '../api/client'
 import type { Session } from '@opencode-ai/sdk'
 import type { Agent, ServerEntry } from '../types'
 import { storageKey } from '../utils/storage'
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true)
+}
 
 interface Props {
   route: any
@@ -26,9 +32,13 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
   const [creating, setCreating] = useState(false)
   const [selecting, setSelecting] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [renamingId, setRenamingId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
   const [agents, setAgents] = useState<Agent[]>([])
+  const [renamingSession, setRenamingSession] = useState<Session | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const openSwipeRef = useRef<Swipeable | null>(null)
+  const renameInputRef = useRef<TextInput>(null)
+  const toastAnim = useRef(new Animated.Value(0)).current
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -51,6 +61,12 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
     }).catch(() => {})
   }, [directory, client])
 
+  useEffect(() => {
+    if (renamingSession) setTimeout(() => renameInputRef.current?.focus(), 200)
+  }, [renamingSession])
+
+  const animCfg = { duration: 220, create: { type: 'easeInEaseOut' as const, property: 'opacity' as const }, update: { type: 'spring' as const, springDamping: 0.85 }, delete: { type: 'easeInEaseOut' as const, duration: 160 } }
+
   const createSession = async () => {
     setCreating(true)
     try {
@@ -65,9 +81,9 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
     setCreating(false)
   }
 
-  const enterSelection = (id: string) => {
+  const enterSelection = (id?: string) => {
     setSelecting(true)
-    setSelectedIds(new Set([id]))
+    setSelectedIds(id ? new Set([id]) : new Set())
   }
 
   const toggleSelection = (id: string) => {
@@ -84,28 +100,32 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
     setSelectedIds(new Set())
   }
 
-  const handleDelete = () => {
-    const count = selectedIds.size
-    if (count === 0) return
-    Alert.alert(
-      '删除会话',
-      `确定要删除选中的 ${count} 个会话吗？`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            const ids = [...selectedIds]
-            try {
-              await Promise.all(ids.map((id) => client.deleteSession(id)))
-            } catch {}
-            cancelSelection()
-            load()
-          },
-        },
-      ]
-    )
+  const handleDelete = async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    LayoutAnimation.configureNext(animCfg)
+    setSessions(prev => prev.filter(s => !selectedIds.has(s.id)))
+    cancelSelection()
+    try {
+      await Promise.all(ids.map((id) => client.deleteSession(id)))
+    } catch {}
+    load()
+  }
+
+  const handleDeleteSingle = async (id: string) => {
+    LayoutAnimation.configureNext(animCfg)
+    setSessions(prev => prev.filter(s => s.id !== id))
+    try { await client.deleteSession(id) } catch {}
+  }
+
+  const handleCopyTitle = async (title: string) => {
+    await Clipboard.setStringAsync(title)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastAnim.setValue(0)
+    Animated.timing(toastAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start()
+    toastTimer.current = setTimeout(() => {
+      Animated.timing(toastAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start()
+    }, 1200)
   }
 
   const handlePress = (item: Session) => {
@@ -123,35 +143,57 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
 
   const handleLongPress = (item: Session) => {
     if (selecting) return
-    Alert.alert(item.title || '会话', undefined, [
-      {
-        text: '重命名',
-        onPress: () => {
-          setRenamingId(item.id)
-          setRenameValue(item.title || '')
-        },
-      },
-      {
-        text: '选择',
-        onPress: () => enterSelection(item.id),
-      },
-      { text: '取消', style: 'cancel' },
-    ])
+    setRenamingSession(item)
+    setRenameValue(item.title || '')
   }
 
-  const handleRenameSubmit = useCallback(async () => {
-    if (!renamingId || !renameValue.trim()) {
-      setRenamingId(null)
-      return
-    }
-    try {
-      await client.renameSession(renamingId, renameValue.trim())
-      setRenamingId(null)
-      load()
-    } catch {
-      setRenamingId(null)
-    }
-  }, [renamingId, renameValue, client, load])
+  const saveRename = async () => {
+    if (!renamingSession) return
+    const trimmed = renameValue.trim()
+    const id = renamingSession.id
+    setRenamingSession(null)
+    setRenameValue('')
+    if (!trimmed || trimmed === renamingSession.title) return
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, title: trimmed } : s))
+    try { await client.renameSession(id, trimmed) } catch {}
+  }
+
+  const cancelRename = () => {
+    setRenamingSession(null)
+    setRenameValue('')
+  }
+
+  const renderRightActions = (item: Session) => (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const scale = dragX.interpolate({
+      inputRange: [-140, 0],
+      outputRange: [1, 0.6],
+      extrapolate: 'clamp',
+    })
+    return (
+      <Animated.View style={[styles.swipeActions, { transform: [{ scale }] }]}>
+        <TouchableOpacity
+          style={styles.copyBtn}
+          onPress={() => {
+            openSwipeRef.current?.close()
+            handleCopyTitle(item.title || item.id.slice(0, 8))
+          }}
+        >
+          <Feather name="copy" size={18} color="#fff" />
+          <Text style={styles.swipeBtnText}>复制</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.deleteBtn}
+          onPress={() => {
+            openSwipeRef.current?.close()
+            handleDeleteSingle(item.id)
+          }}
+        >
+          <Feather name="trash-2" size={18} color="#fff" />
+          <Text style={styles.swipeBtnText}>删除</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    )
+  }
 
   const selectedCount = selectedIds.size
 
@@ -160,25 +202,24 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
         {selecting ? (
           <>
-            <TouchableOpacity onPress={cancelSelection}>
+            <TouchableOpacity onPress={cancelSelection} hitSlop={10}>
               <Text style={[styles.action, { color: theme.accent }]}>取消</Text>
             </TouchableOpacity>
             <Text style={[styles.headerTitle, { color: theme.text }]}>已选 {selectedCount} 项</Text>
-            <TouchableOpacity onPress={handleDelete} disabled={selectedCount === 0}>
-              <Text style={[styles.action, { color: selectedCount > 0 ? theme.error : theme.textTertiary }]}>删除</Text>
+            <TouchableOpacity onPress={handleDelete} disabled={selectedCount === 0} hitSlop={10}>
+              <Text style={[styles.action, { color: selectedCount > 0 ? '#ff3b30' : theme.textTertiary }]}>删除({selectedCount})</Text>
             </TouchableOpacity>
           </>
         ) : (
           <>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Text style={[styles.back, { color: theme.accent }]}>← 工作区</Text>
+            <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={10} style={styles.backBtn}>
+              <Feather name="chevron-left" size={22} color={theme.textSecondary} />
             </TouchableOpacity>
-            <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{name}</Text>
-            <TouchableOpacity
-              style={styles.todoBtn}
-              onPress={() => navigation.navigate('Todo', { directory, name })}
-            >
-              <Feather name="check-square" size={18} color={theme.accent} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{name}</Text>
+            </View>
+            <TouchableOpacity onPress={() => enterSelection()} style={styles.headerRightBtn} hitSlop={10}>
+              <Text style={[styles.action, { color: theme.accent }]}>选择</Text>
             </TouchableOpacity>
           </>
         )}
@@ -196,36 +237,38 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => {
             const isSelected = selecting && selectedIds.has(item.id)
-            const isRenaming = renamingId === item.id
             return (
-              <TouchableOpacity
-                style={[styles.sessionItem, { borderBottomColor: theme.border }, (isSelected || isRenaming) && { backgroundColor: theme.surface }]}
-                onPress={() => handlePress(item)}
-                onLongPress={() => handleLongPress(item)}
+              <Swipeable
+                ref={ref => {
+                  if (ref) {
+                    openSwipeRef.current?.close()
+                    openSwipeRef.current = ref
+                  }
+                }}
+                renderRightActions={selecting ? undefined : renderRightActions(item)}
+                overshootRight={false}
+                friction={2}
+                rightThreshold={40}
+                enabled={!selecting}
               >
-                <View style={styles.sessionRow}>
-                  {selecting && (
-                    <View style={[styles.checkbox, isSelected && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
-                      {isSelected && <Text style={styles.checkmark}>✓</Text>}
-                    </View>
-                  )}
-                  {isRenaming ? (
-                    <TextInput
-                      style={[styles.sessionTitleInput, { color: theme.text, borderBottomColor: theme.accent }]}
-                      value={renameValue}
-                      onChangeText={setRenameValue}
-                      onSubmitEditing={handleRenameSubmit}
-                      onBlur={handleRenameSubmit}
-                      autoFocus
-                      selectTextOnFocus
-                    />
-                  ) : (
+                <TouchableOpacity
+                  style={[styles.sessionItem, { borderBottomColor: theme.border }, isSelected && { backgroundColor: theme.surface }]}
+                  onPress={() => handlePress(item)}
+                  onLongPress={() => handleLongPress(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.sessionRow}>
+                    {selecting && (
+                      <View style={[styles.checkbox, isSelected && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
+                        {isSelected && <Feather name="check" size={14} color="#fff" />}
+                      </View>
+                    )}
                     <Text style={[styles.sessionTitle, { color: theme.text }]} numberOfLines={1}>
-                      💬 {item.title || item.id.slice(0, 8)}
+                      {item.title || item.id.slice(0, 8)}
                     </Text>
-                  )}
-                </View>
-              </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              </Swipeable>
             )
           }}
           ListEmptyComponent={
@@ -239,8 +282,61 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
         onPress={createSession}
         disabled={creating}
       >
-        <Text style={styles.fabText}>{creating ? '...' : '＋'}</Text>
+        <Feather name="plus" size={24} color="#fff" />
       </TouchableOpacity>
+
+      {renamingSession && (
+        <Modal visible animationType="slide" onRequestClose={cancelRename}>
+          <View style={[styles.editScreen, { backgroundColor: theme.background }]}>
+            <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
+              <View style={[styles.editHeader, { borderBottomColor: theme.border }]}>
+                <TouchableOpacity onPress={cancelRename} hitSlop={10} style={styles.editHeaderBtn}>
+                  <Feather name="x" size={22} color={theme.textSecondary} />
+                  <Text style={[styles.editHeaderText, { color: theme.textSecondary }]}>取消</Text>
+                </TouchableOpacity>
+                <Text style={[styles.editHeaderTitle, { color: theme.text }]}>重命名</Text>
+                <TouchableOpacity onPress={saveRename} hitSlop={10} style={styles.editHeaderBtn}>
+                  <Text style={[styles.editHeaderText, { color: theme.accent, fontWeight: '700' }]}>保存</Text>
+                  <Feather name="check" size={22} color={theme.accent} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.editBody}>
+                <TextInput
+                  ref={renameInputRef}
+                  value={renameValue}
+                  onChangeText={setRenameValue}
+                  placeholder="输入会话标题..."
+                  placeholderTextColor={theme.textTertiary}
+                  style={[styles.editInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
+                />
+                <View style={styles.editMeta}>
+                  <Feather name="hash" size={13} color={theme.textTertiary} />
+                  <Text style={[styles.editMetaText, { color: theme.textTertiary }]}>
+                    {renamingSession.id.slice(0, 8)}
+                  </Text>
+                </View>
+              </View>
+            </SafeAreaView>
+          </View>
+        </Modal>
+      )}
+
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.toast,
+          {
+            opacity: toastAnim,
+            transform: [{
+              translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }),
+            }],
+          },
+        ]}
+      >
+        <Feather name="check-circle" size={16} color="#fff" />
+        <Text style={styles.toastText}>已复制</Text>
+      </Animated.View>
     </SafeAreaView>
   )
 }
@@ -255,18 +351,39 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  back: { fontSize: 16 },
-  action: { fontSize: 15, fontWeight: '500' },
+  backBtn: { width: 32, marginRight: 8 },
+  action: { fontSize: 15, fontWeight: '600' },
   headerTitle: { fontSize: 17, fontWeight: '600', flex: 1, textAlign: 'center' },
-  todoBtn: { padding: 4, marginLeft: 8 },
+  headerRightBtn: { paddingLeft: 16 },
   pathBar: { paddingHorizontal: 16, paddingVertical: 10 },
   pathText: { fontSize: 12 },
   sessionItem: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 },
   sessionRow: { flexDirection: 'row', alignItems: 'center' },
   sessionTitle: { fontSize: 15, flex: 1 },
-  sessionTitleInput: { fontSize: 15, flex: 1, borderBottomWidth: 1, paddingVertical: 0 },
   checkbox: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#999', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  checkmark: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  swipeActions: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  copyBtn: {
+    backgroundColor: '#6c7dff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 76,
+  },
+  deleteBtn: {
+    backgroundColor: '#ff3b30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 76,
+  },
+  swipeBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
   empty: { textAlign: 'center', marginTop: 48, fontSize: 14 },
   fab: {
     position: 'absolute', bottom: 24, right: 24,
@@ -274,5 +391,38 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4,
   },
-  fabText: { color: '#fff', fontSize: 28, lineHeight: 30 },
+  editScreen: { flex: 1 },
+  editHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  editHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  editHeaderText: { fontSize: 15 },
+  editHeaderTitle: { fontSize: 17, fontWeight: '700' },
+  editBody: { flex: 1, padding: 16 },
+  editInput: {
+    fontSize: 16, lineHeight: 24,
+    borderRadius: 12, borderWidth: 1,
+    padding: 16,
+  },
+  editMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
+  editMetaText: { fontSize: 13 },
+  toast: {
+    position: 'absolute',
+    bottom: 100,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  toastText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 })

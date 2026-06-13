@@ -1,6 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react'
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert } from 'react-native'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, Animated, Modal, LayoutAnimation, Platform, UIManager } from 'react-native'
+import { Swipeable } from 'react-native-gesture-handler'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { Feather } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { getTheme, ThemeMode } from '../theme'
@@ -8,9 +10,14 @@ import { LayCodeClient } from '../api/client'
 import { ServerEntry } from '../types'
 import { storageKey } from '../utils/storage'
 
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true)
+}
+
 interface Workspace {
   path: string
   name: string
+  alias?: string
   addedAt: number
 }
 
@@ -25,7 +32,11 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
   const theme = getTheme(themeMode)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const [editingWs, setEditingWs] = useState<Workspace | null>(null)
+  const [aliasText, setAliasText] = useState('')
   const key = storageKey(config.id, 'workspaces')
+  const openSwipeRef = useRef<Swipeable | null>(null)
+  const aliasInputRef = useRef<TextInput>(null)
 
   const load = useCallback(async () => {
     try {
@@ -48,17 +59,74 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
 
   useFocusEffect(useCallback(() => { load() }, [load]))
 
+  useEffect(() => {
+    if (editingWs) setTimeout(() => aliasInputRef.current?.focus(), 200)
+  }, [editingWs])
+
+  const animCfg = { duration: 220, create: { type: 'easeInEaseOut' as const, property: 'opacity' as const }, update: { type: 'spring' as const, springDamping: 0.85 }, delete: { type: 'easeInEaseOut' as const, duration: 160 } }
+
   const removeWorkspace = useCallback(async (path: string) => {
+    LayoutAnimation.configureNext(animCfg)
     const updated = workspaces.filter(w => w.path !== path)
     setWorkspaces(updated)
     await AsyncStorage.setItem(key, JSON.stringify(updated))
   }, [workspaces, key])
 
-  const confirmRemove = (path: string, name: string) => {
-    Alert.alert('删除工作区', `确定删除「${name}」？`, [
-      { text: '取消', style: 'cancel' },
-      { text: '删除', style: 'destructive', onPress: () => removeWorkspace(path) },
-    ])
+  const saveAlias = useCallback(async () => {
+    if (!editingWs) return
+    const trimmed = aliasText.trim()
+    const path = editingWs.path
+    setEditingWs(null)
+    setAliasText('')
+    const updated = workspaces.map(w =>
+      w.path === path ? { ...w, alias: trimmed || undefined } : w
+    )
+    setWorkspaces(updated)
+    await AsyncStorage.setItem(key, JSON.stringify(updated))
+  }, [editingWs, aliasText, workspaces, key])
+
+  const cancelAlias = () => {
+    setEditingWs(null)
+    setAliasText('')
+  }
+
+  const openAliasEdit = (ws: Workspace) => {
+    setEditingWs(ws)
+    setAliasText(ws.alias || ws.name)
+  }
+
+  const displayName = (ws: Workspace) => ws.alias || ws.name
+
+  const renderRightActions = (ws: Workspace) => (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const scale = dragX.interpolate({
+      inputRange: [-140, 0],
+      outputRange: [1, 0.6],
+      extrapolate: 'clamp',
+    })
+    return (
+      <Animated.View style={[styles.swipeActions, { transform: [{ scale }] }]}>
+        <TouchableOpacity
+          style={styles.editBtn}
+          onPress={() => {
+            openSwipeRef.current?.close()
+            openAliasEdit(ws)
+          }}
+        >
+          <Feather name="edit-2" size={18} color="#fff" />
+          <Text style={styles.swipeBtnText}>编辑</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.deleteBtn}
+          onPress={() => {
+            openSwipeRef.current?.close()
+            removeWorkspace(ws.path)
+          }}
+        >
+          <Feather name="trash-2" size={18} color="#fff" />
+          <Text style={styles.swipeBtnText}>删除</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    )
   }
 
   return (
@@ -72,17 +140,35 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
         data={workspaces}
         keyExtractor={(item) => item.path}
         renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}
-            onPress={() => navigation.navigate('Workspace', { directory: item.path, name: item.name })}
-            onLongPress={() => confirmRemove(item.path, item.name)}
-          >
-            <Text style={[styles.cardName, { color: theme.text }]}>{item.name}</Text>
-            <Text style={[styles.cardPath, { color: theme.textSecondary }]}>{item.path}</Text>
-            <Text style={[styles.cardMeta, { color: theme.textSecondary }]}>
-              {counts[item.path] ?? '-'} 个会话
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.cardWrapper}>
+            <Swipeable
+              ref={ref => {
+                if (ref) {
+                  openSwipeRef.current?.close()
+                  openSwipeRef.current = ref
+                }
+              }}
+              renderRightActions={renderRightActions(item)}
+              overshootRight={false}
+              friction={2}
+              rightThreshold={40}
+            >
+              <TouchableOpacity
+                style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                onPress={() => navigation.navigate('Workspace', { directory: item.path, name: displayName(item) })}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.cardName, { color: theme.text }]}>{displayName(item)}</Text>
+                {item.alias && (
+                  <Text style={[styles.cardOriginalName, { color: theme.textTertiary }]}>{item.name}</Text>
+                )}
+                <Text style={[styles.cardPath, { color: theme.textSecondary }]}>{item.path}</Text>
+                <Text style={[styles.cardMeta, { color: theme.textSecondary }]}>
+                  {counts[item.path] ?? '-'} 个会话
+                </Text>
+              </TouchableOpacity>
+            </Swipeable>
+          </View>
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -102,6 +188,49 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
       >
         <Text style={styles.fabText}>＋</Text>
       </TouchableOpacity>
+
+      {editingWs && (
+        <Modal visible animationType="slide" onRequestClose={cancelAlias}>
+          <View style={[styles.editScreen, { backgroundColor: theme.background }]}>
+            <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
+              <View style={[styles.editHeader, { borderBottomColor: theme.border }]}>
+                <TouchableOpacity onPress={cancelAlias} hitSlop={10} style={styles.editHeaderBtn}>
+                  <Feather name="x" size={22} color={theme.textSecondary} />
+                  <Text style={[styles.editHeaderText, { color: theme.textSecondary }]}>取消</Text>
+                </TouchableOpacity>
+                <Text style={[styles.editHeaderTitle, { color: theme.text }]}>设置别名</Text>
+                <TouchableOpacity onPress={saveAlias} hitSlop={10} style={styles.editHeaderBtn}>
+                  <Text style={[styles.editHeaderText, { color: theme.accent, fontWeight: '700' }]}>保存</Text>
+                  <Feather name="check" size={22} color={theme.accent} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.editBody}>
+                <TextInput
+                  ref={aliasInputRef}
+                  value={aliasText}
+                  onChangeText={setAliasText}
+                  placeholder="输入别名..."
+                  placeholderTextColor={theme.textTertiary}
+                  style={[styles.editInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
+                />
+                <View style={styles.editMeta}>
+                  <Feather name="folder" size={13} color={theme.textTertiary} />
+                  <Text style={[styles.editMetaText, { color: theme.textTertiary }]}>
+                    {editingWs.path}
+                  </Text>
+                </View>
+                <View style={styles.editMeta}>
+                  <Feather name="info" size={13} color={theme.textTertiary} />
+                  <Text style={[styles.editMetaText, { color: theme.textTertiary }]}>
+                    别名为空则显示原始名称
+                  </Text>
+                </View>
+              </View>
+            </SafeAreaView>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   )
 }
@@ -117,10 +246,35 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 22, fontWeight: 'bold' },
   subtitle: { fontSize: 13 },
-  card: { marginHorizontal: 16, marginBottom: 12, borderRadius: 12, padding: 16, borderWidth: 1 },
+  cardWrapper: { marginHorizontal: 16, marginBottom: 12 },
+  card: { borderRadius: 12, padding: 16, borderWidth: 1 },
   cardName: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
+  cardOriginalName: { fontSize: 12, marginBottom: 2 },
   cardPath: { fontSize: 12, marginBottom: 4 },
   cardMeta: { fontSize: 12 },
+  swipeActions: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  editBtn: {
+    backgroundColor: '#6c7dff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 76,
+  },
+  deleteBtn: {
+    backgroundColor: '#ff3b30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 76,
+  },
+  swipeBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
   empty: { alignItems: 'center', paddingTop: 40 },
   emptyIcon: { fontSize: 40, marginBottom: 12 },
   emptyText: { fontSize: 16, marginBottom: 4 },
@@ -133,4 +287,21 @@ const styles = StyleSheet.create({
     elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4,
   },
   fabText: { color: '#fff', fontSize: 28, lineHeight: 30 },
+  editScreen: { flex: 1 },
+  editHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  editHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  editHeaderText: { fontSize: 15 },
+  editHeaderTitle: { fontSize: 17, fontWeight: '700' },
+  editBody: { flex: 1, padding: 16 },
+  editInput: {
+    fontSize: 16, lineHeight: 24,
+    borderRadius: 12, borderWidth: 1,
+    padding: 16,
+  },
+  editMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
+  editMetaText: { fontSize: 13, flex: 1 },
 })

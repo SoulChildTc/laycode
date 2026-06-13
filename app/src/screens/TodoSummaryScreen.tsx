@@ -12,6 +12,7 @@ import { storageKey } from '../utils/storage'
 interface Workspace {
   path: string
   name: string
+  alias?: string
   addedAt: number
 }
 
@@ -172,7 +173,7 @@ export default function TodoSummaryScreen({ navigation, client, themeMode, confi
                 >
                   <Feather name={isOpen ? 'chevron-down' : 'chevron-right'} size={16} color={theme.textTertiary} />
                   <Feather name="folder" size={16} color={theme.accent} />
-                  <Text style={[s.groupName, { color: theme.text }]} numberOfLines={1}>{g.workspace.name}</Text>
+                  <Text style={[s.groupName, { color: theme.text }]} numberOfLines={1}>{g.workspace.alias || g.workspace.name}</Text>
                   {g.pending > 0 && (
                     <View style={[s.countBadge, { backgroundColor: theme.accent }]}>
                       <Text style={s.countText}>{g.pending}</Text>
@@ -188,7 +189,7 @@ export default function TodoSummaryScreen({ navigation, client, themeMode, confi
             return (
               <TouchableOpacity
                 style={[s.todoRow, { borderBottomColor: theme.border }]}
-                onPress={() => navigation.navigate('Todo', { directory: item.group.workspace.path, name: item.group.workspace.name })}
+                onPress={() => navigation.navigate('Todo', { directory: item.group.workspace.path, name: item.group.workspace.alias || item.group.workspace.name })}
                 activeOpacity={0.7}
               >
                 <CheckBtn done={t.done} onPress={() => handleToggle(t, item.group)} />
