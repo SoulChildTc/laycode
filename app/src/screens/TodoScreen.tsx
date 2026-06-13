@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
-  StyleSheet, Alert, Modal, Animated,
-  LayoutAnimation, Platform, UIManager, Keyboard,
+  StyleSheet, Modal, Animated,
+  LayoutAnimation, UIManager, Platform,
 } from 'react-native'
+import * as Clipboard from 'expo-clipboard'
+import { Swipeable } from 'react-native-gesture-handler'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { getTheme, ThemeMode } from '../theme'
@@ -43,13 +45,12 @@ export default function TodoScreen({ route, navigation, themeMode, client: api }
   const theme = getTheme(themeMode)
   const [items, setItems] = useState<Todo[]>([])
   const [loading, setLoading] = useState(true)
-  const [showAdd, setShowAdd] = useState(false)
-  const [addText, setAddText] = useState('')
-  const [editId, setEditId] = useState<string | null>(null)
-  const [editVal, setEditVal] = useState('')
-  const [keyboardH, setKeyboardH] = useState(0)
-  const inputRef = useRef<TextInput>(null)
-  const editRef = useRef<TextInput>(null)
+  const [editingTodo, setEditingTodo] = useState<Todo | 'new' | null>(null)
+  const [editText, setEditText] = useState('')
+  const editInputRef = useRef<TextInput>(null)
+  const openSwipeRef = useRef<Swipeable | null>(null)
+  const toastAnim = useRef(new Animated.Value(0)).current
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async () => {
     try { setItems(await api.getTodos(directory)) } catch {}
@@ -59,28 +60,10 @@ export default function TodoScreen({ route, navigation, themeMode, client: api }
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    const onShow = Keyboard.addListener('keyboardDidShow', e => setKeyboardH(e.endCoordinates.height))
-    const onHide = Keyboard.addListener('keyboardDidHide', () => setKeyboardH(0))
-    return () => { onShow.remove(); onHide.remove() }
-  }, [])
-
-  useEffect(() => {
-    if (showAdd) setTimeout(() => inputRef.current?.focus(), 300)
-  }, [showAdd])
+    if (editingTodo) setTimeout(() => editInputRef.current?.focus(), 200)
+  }, [editingTodo])
 
   const animCfg = { duration: 220, create: { type: 'easeInEaseOut' as const, property: 'opacity' as const }, update: { type: 'spring' as const, springDamping: 0.85 }, delete: { type: 'easeInEaseOut' as const, duration: 160 } }
-
-  const handleAdd = async () => {
-    const trimmed = addText.trim()
-    if (!trimmed) return
-    setShowAdd(false)
-    setAddText('')
-    LayoutAnimation.configureNext(animCfg)
-    try {
-      const todo = await api.createTodo(directory, trimmed)
-      if (todo) setItems(prev => [...prev, todo])
-    } catch {}
-  }
 
   const handleToggle = async (id: string, done: boolean) => {
     LayoutAnimation.configureNext(animCfg)
@@ -88,45 +71,97 @@ export default function TodoScreen({ route, navigation, themeMode, client: api }
     try { await api.updateTodo(directory, id, { done: !done }) } catch {}
   }
 
-  const handleDelete = (id: string) => {
-    Alert.alert('删除', '确定删除这条任务？', [
-      { text: '取消', style: 'cancel' },
-      { text: '删除', style: 'destructive', onPress: async () => {
-        LayoutAnimation.configureNext(animCfg)
-        setItems(prev => prev.filter(t => t.id !== id))
-        try { await api.deleteTodo(directory, id) } catch {}
-      }},
-    ])
+  const handleDelete = async (id: string) => {
+    LayoutAnimation.configureNext(animCfg)
+    setItems(prev => prev.filter(t => t.id !== id))
+    try { await api.deleteTodo(directory, id) } catch {}
   }
 
-  const startEdit = (todo: Todo) => {
-    setEditId(todo.id)
-    setEditVal(todo.text)
-    setTimeout(() => editRef.current?.focus(), 150)
+  const handleCopy = async (text: string) => {
+    await Clipboard.setStringAsync(text)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastAnim.setValue(0)
+    Animated.timing(toastAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start()
+    toastTimer.current = setTimeout(() => {
+      Animated.timing(toastAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start()
+    }, 1200)
   }
 
-  const saveEdit = async () => {
-    if (!editId) return
-    const trimmed = editVal.trim()
-    if (!trimmed) { setEditId(null); return }
-    const id = editId
-    setEditId(null)
-    setEditVal('')
-    setItems(prev => prev.map(t => t.id === id ? { ...t, text: trimmed } : t))
-    try { await api.updateTodo(directory, id, { text: trimmed }) } catch {}
+  const openNew = () => {
+    setEditingTodo('new')
+    setEditText('')
   }
 
-  const handleItemPress = (item: Todo) => {
-    if (editId === item.id) return
-    Alert.alert(item.text, undefined, [
-      { text: '编辑', onPress: () => startEdit(item) },
-      { text: '删除', style: 'destructive', onPress: () => handleDelete(item.id) },
-      { text: '取消', style: 'cancel' },
-    ])
+  const openEdit = (todo: Todo) => {
+    setEditingTodo(todo)
+    setEditText(todo.text)
+  }
+
+  const handleSave = async () => {
+    const trimmed = editText.trim()
+    const isNew = editingTodo === 'new'
+    const id = isNew ? null : (editingTodo as Todo).id
+    const oldText = isNew ? '' : (editingTodo as Todo).text
+    setEditingTodo(null)
+    setEditText('')
+    if (!trimmed || trimmed === oldText) return
+    if (isNew) {
+      LayoutAnimation.configureNext(animCfg)
+      try {
+        const todo = await api.createTodo(directory, trimmed)
+        if (todo) setItems(prev => [...prev, todo])
+      } catch {}
+    } else {
+      setItems(prev => prev.map(t => t.id === id ? { ...t, text: trimmed } : t))
+      try { await api.updateTodo(directory, id!, { text: trimmed }) } catch {}
+    }
+  }
+
+  const cancelEdit = () => {
+    setEditingTodo(null)
+    setEditText('')
+  }
+
+  const renderRightActions = (id: string, text: string) => (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const scale = dragX.interpolate({
+      inputRange: [-140, 0],
+      outputRange: [1, 0.6],
+      extrapolate: 'clamp',
+    })
+    return (
+      <Animated.View style={[s.swipeActions, { transform: [{ scale }] }]}>
+        <TouchableOpacity
+          style={s.copyBtn}
+          onPress={() => {
+            openSwipeRef.current?.close()
+            handleCopy(text)
+          }}
+        >
+          <Feather name="copy" size={18} color="#fff" />
+          <Text style={s.swipeBtnText}>复制</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={s.deleteBtn}
+          onPress={() => {
+            openSwipeRef.current?.close()
+            handleDelete(id)
+          }}
+        >
+          <Feather name="trash-2" size={18} color="#fff" />
+          <Text style={s.swipeBtnText}>删除</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    )
   }
 
   const pending = items.filter(t => !t.done)
   const doneList = items.filter(t => t.done)
+
+  const formatDate = (ts: number) => {
+    const d = new Date(ts)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
@@ -139,7 +174,7 @@ export default function TodoScreen({ route, navigation, themeMode, client: api }
             <Text style={[s.title, { color: theme.text }]} numberOfLines={1}>{name}</Text>
             <Text style={[s.subtitle, { color: theme.textTertiary }]}>{pending.length} 未完成</Text>
           </View>
-          <TouchableOpacity onPress={() => setShowAdd(true)} style={[s.addBtn, { backgroundColor: theme.accent }]}>
+          <TouchableOpacity onPress={openNew} style={[s.addBtn, { backgroundColor: theme.accent }]}>
             <Feather name="plus" size={20} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -151,34 +186,32 @@ export default function TodoScreen({ route, navigation, themeMode, client: api }
             data={[...pending, ...doneList]}
             keyExtractor={item => item.id}
             contentContainerStyle={s.list}
-            renderItem={({ item }) => {
-              const editing = editId === item.id
-              return (
-                <View style={[s.row, { borderBottomColor: theme.border }]}>
+            renderItem={({ item }) => (
+              <Swipeable
+                ref={ref => {
+                  if (ref) {
+                    openSwipeRef.current?.close()
+                    openSwipeRef.current = ref
+                  }
+                }}
+                renderRightActions={renderRightActions(item.id, item.text)}
+                overshootRight={false}
+                friction={2}
+                rightThreshold={40}
+              >
+                <View style={[s.row, { borderBottomColor: theme.border, backgroundColor: theme.background }]}>
                   <CheckBtn done={item.done} onPress={() => handleToggle(item.id, item.done)} />
-                  {editing ? (
-                    <TextInput
-                      ref={editRef}
-                      value={editVal}
-                      onChangeText={setEditVal}
-                      onSubmitEditing={saveEdit}
-                      onBlur={saveEdit}
-                      returnKeyType="done"
-                      style={[s.editInput, { color: theme.text, borderBottomColor: theme.accent }]}
-                    />
-                  ) : (
-                    <TouchableOpacity style={s.touchText} onPress={() => handleItemPress(item)} activeOpacity={0.6}>
-                      <Text
-                        style={[s.rowText, { color: item.done ? theme.textTertiary : theme.text }]}
-                        numberOfLines={3}
-                      >
-                        {item.text}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity style={s.touchText} onPress={() => openEdit(item)} activeOpacity={0.6}>
+                    <Text
+                      style={[s.rowText, { color: item.done ? theme.textTertiary : theme.text }]}
+                      numberOfLines={3}
+                    >
+                      {item.text}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-              )
-            }}
+              </Swipeable>
+            )}
             ListEmptyComponent={
               <View style={s.emptyWrap}>
                 <Feather name="edit-3" size={28} color={theme.textTertiary} />
@@ -190,39 +223,74 @@ export default function TodoScreen({ route, navigation, themeMode, client: api }
         )}
       </SafeAreaView>
 
-      {showAdd && (
-        <Modal visible transparent animationType="none" onRequestClose={() => setShowAdd(false)}>
-          <View style={[s.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)', paddingBottom: keyboardH }]}>
-            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowAdd(false)} />
-            <View style={[s.modalSheet, { backgroundColor: theme.surface }]}>
-              <View style={s.modalHeader}>
-                <Text style={[s.modalTitle, { color: theme.text }]}>新任务</Text>
-                <TouchableOpacity onPress={() => setShowAdd(false)} hitSlop={10}>
-                  <Feather name="x" size={20} color={theme.textTertiary} />
+      {editingTodo !== null && (
+        <Modal visible animationType="slide" onRequestClose={cancelEdit}>
+          <View style={[s.editScreen, { backgroundColor: theme.background }]}>
+            <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
+              <View style={[s.editHeader, { borderBottomColor: theme.border }]}>
+                <TouchableOpacity onPress={cancelEdit} hitSlop={10} style={s.editHeaderBtn}>
+                  <Feather name="x" size={22} color={theme.textSecondary} />
+                  <Text style={[s.editHeaderText, { color: theme.textSecondary }]}>取消</Text>
+                </TouchableOpacity>
+                <Text style={[s.editHeaderTitle, { color: theme.text }]}>
+                  {editingTodo === 'new' ? '新建任务' : '编辑任务'}
+                </Text>
+                <TouchableOpacity onPress={handleSave} hitSlop={10} style={s.editHeaderBtn}>
+                  <Text style={[s.editHeaderText, { color: theme.accent, fontWeight: '700' }]}>保存</Text>
+                  <Feather name="check" size={22} color={theme.accent} />
                 </TouchableOpacity>
               </View>
-              <TextInput
-                ref={inputRef}
-                value={addText}
-                onChangeText={setAddText}
-                placeholder="做什么？"
-                placeholderTextColor={theme.textTertiary}
-                onSubmitEditing={handleAdd}
-                returnKeyType="done"
-                style={[s.modalInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-              />
-              <View style={s.modalActions}>
-                <TouchableOpacity onPress={() => setShowAdd(false)} style={s.modalCancel}>
-                  <Text style={[s.modalCancelText, { color: theme.textSecondary }]}>取消</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleAdd} style={[s.modalConfirm, { backgroundColor: addText.trim() ? theme.accent : theme.border }]}>
-                  <Text style={[s.modalConfirmText, { color: addText.trim() ? '#fff' : theme.textTertiary }]}>添加</Text>
-                </TouchableOpacity>
+
+              <View style={s.editBody}>
+                <TextInput
+                  ref={editInputRef}
+                  value={editText}
+                  onChangeText={setEditText}
+                  multiline
+                  textAlignVertical="top"
+                  placeholder="输入任务内容..."
+                  placeholderTextColor={theme.textTertiary}
+                  style={[s.editInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
+                />
+                {editingTodo !== 'new' && (
+                  <>
+                    <View style={s.editMeta}>
+                      <Feather name="clock" size={13} color={theme.textTertiary} />
+                      <Text style={[s.editMetaText, { color: theme.textTertiary }]}>
+                        创建于 {formatDate(editingTodo.createdAt)}
+                      </Text>
+                    </View>
+                    {editingTodo.updatedAt !== editingTodo.createdAt && (
+                      <View style={s.editMeta}>
+                        <Feather name="refresh-cw" size={13} color={theme.textTertiary} />
+                        <Text style={[s.editMetaText, { color: theme.textTertiary }]}>
+                          更新于 {formatDate(editingTodo.updatedAt)}
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                )}
               </View>
-            </View>
+            </SafeAreaView>
           </View>
         </Modal>
       )}
+
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          s.toast,
+          {
+            opacity: toastAnim,
+            transform: [{
+              translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }),
+            }],
+          },
+        ]}
+      >
+        <Feather name="check-circle" size={16} color="#fff" />
+        <Text style={s.toastText}>已复制</Text>
+      </Animated.View>
     </View>
   )
 }
@@ -255,34 +323,72 @@ const s = StyleSheet.create({
   },
   touchText: { flex: 1, paddingVertical: 2 },
   rowText: { fontSize: 15, lineHeight: 22 },
-  editInput: {
-    flex: 1, fontSize: 15, lineHeight: 22,
-    padding: 0, borderBottomWidth: 1,
+  swipeActions: {
+    flexDirection: 'row',
+    marginBottom: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginLeft: 4,
+  },
+  copyBtn: {
+    backgroundColor: '#6c7dff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 76,
+  },
+  deleteBtn: {
+    backgroundColor: '#ff3b30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 76,
+  },
+  swipeBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyWrap: { alignItems: 'center', paddingTop: 80, gap: 8 },
   emptyTitle: { fontSize: 16, fontWeight: '600' },
   emptySub: { fontSize: 13 },
-  modalOverlay: { flex: 1, justifyContent: 'flex-end' },
-  modalSheet: {
-    borderTopLeftRadius: 16, borderTopRightRadius: 16,
-    padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 20,
+  editScreen: { flex: 1 },
+  editHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1,
   },
-  modalHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 16,
+  editHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  editHeaderText: { fontSize: 15 },
+  editHeaderTitle: { fontSize: 17, fontWeight: '700' },
+  editBody: { flex: 1, padding: 16 },
+  editInput: {
+    flex: 1,
+    fontSize: 16,
+    lineHeight: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 16,
+    textAlignVertical: 'top',
+    minHeight: 160,
   },
-  modalTitle: { fontSize: 17, fontWeight: '700' },
-  modalInput: {
-    borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12,
-    fontSize: 15, borderWidth: 1,
+  editMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
+  editMetaText: { fontSize: 13 },
+  toast: {
+    position: 'absolute',
+    bottom: 100,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
   },
-  modalActions: {
-    flexDirection: 'row', justifyContent: 'flex-end', gap: 10,
-    marginTop: 16,
+  toastText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
-  modalCancel: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
-  modalCancelText: { fontSize: 15, fontWeight: '600' },
-  modalConfirm: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 10 },
-  modalConfirmText: { fontSize: 15, fontWeight: '700' },
 })
