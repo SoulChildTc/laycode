@@ -144,6 +144,22 @@ app.get('/api/v1/browse', (req, res) => {
   }
 })
 
+app.post('/api/v1/browse/folder', (req, res) => {
+  const auth = req.headers.authorization
+  if (auth !== `Bearer ${config.token}`) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+  const dir = req.body?.path
+  if (!dir || typeof dir !== 'string') return res.status(400).json({ error: 'Missing path' })
+  if (dir.includes('..')) return res.status(400).json({ error: 'Invalid path' })
+  try {
+    fs.mkdirSync(dir, { recursive: true })
+    res.json({ success: true })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 const server = app.listen(config.port, async () => {
   printStartupInfo(config)
   try {

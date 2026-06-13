@@ -18,7 +18,7 @@ start_bridge() {
   echo "║    LayCode Bridge — 电脑端      ║"
   echo "╚══════════════════════════════════╝"
   cd "$ROOT_DIR/bridge"
-  exec npx tsx src/index.ts "$@"
+  exec npx tsx watch src/index.ts "$@"
 }
 
 start_app() {

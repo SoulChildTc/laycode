@@ -44,6 +44,18 @@ export class LayCodeClient {
     return res.json()
   }
 
+  async createFolder(folderPath: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/api/v1/browse/folder`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ path: folderPath }),
+    })
+    if (!res.ok) throw new Error('Create folder failed')
+  }
+
   async listSessionsByDirectory(directory: string): Promise<Session[]> {
     const res = await this.client.session.list({ query: { directory } })
     return (res.data as any) || []
