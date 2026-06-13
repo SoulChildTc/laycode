@@ -145,8 +145,7 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
 
   const handleLongPress = (item: Session) => {
     if (selecting) return
-    setRenamingSession(item)
-    setRenameValue(item.title || '')
+    enterSelection(item.id)
   }
 
   const saveRename = async () => {
@@ -167,12 +166,23 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
 
   const renderRightActions = (item: Session) => (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
     const scale = dragX.interpolate({
-      inputRange: [-140, 0],
+      inputRange: [-228, 0],
       outputRange: [1, 0.6],
       extrapolate: 'clamp',
     })
     return (
       <Animated.View style={[styles.swipeActions, { transform: [{ scale }] }]}>
+        <TouchableOpacity
+          style={styles.renameBtn}
+          onPress={() => {
+            openSwipeRef.current?.close()
+            setRenamingSession(item)
+            setRenameValue(item.title || '')
+          }}
+        >
+          <Feather name="edit-2" size={18} color="#fff" />
+          <Text style={styles.swipeBtnText}>重命名</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.copyBtn}
           onPress={() => {
@@ -220,9 +230,7 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
             <View style={{ flex: 1 }}>
               <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{name}</Text>
             </View>
-            <TouchableOpacity onPress={() => enterSelection()} style={styles.headerRightBtn} hitSlop={10}>
-              <Text style={[styles.action, { color: theme.accent }]}>选择</Text>
-            </TouchableOpacity>
+            <View style={{ width: 32 }} />
           </>
         )}
       </View>
@@ -338,7 +346,6 @@ const styles = StyleSheet.create({
   backBtn: { width: 32, marginRight: 8 },
   action: { fontSize: 15, fontWeight: '600' },
   headerTitle: { fontSize: 17, fontWeight: '600', flex: 1, textAlign: 'center' },
-  headerRightBtn: { paddingLeft: 16 },
   pathBar: { paddingHorizontal: 16, paddingVertical: 10 },
   pathText: { fontSize: 12 },
   sessionItem: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 },
@@ -350,8 +357,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
   },
-  copyBtn: {
+  renameBtn: {
     backgroundColor: '#6c7dff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 76,
+  },
+  copyBtn: {
+    backgroundColor: '#5856d6',
     justifyContent: 'center',
     alignItems: 'center',
     width: 76,
