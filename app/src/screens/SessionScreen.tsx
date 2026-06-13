@@ -15,11 +15,15 @@ import AgentSelectorModal from '../components/AgentSelectorModal'
 import RevertBanner from '../components/RevertBanner'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import { useAgents } from '../hooks/useAgents'
-import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, QuestionRequest, ServerEntry, ListItem, RevertBannerMsg, CompactionMsg } from '../types'
+import type { Message, AssistantMsg, ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, QuestionRequest, ServerEntry, ListItem, RevertBannerMsg, CompactionMsg, FileAttachment } from '../types'
 import { mapToolStatus, isAssistant, isRevertBanner, isCompaction } from '../types'
 import { stripThinking } from '../utils/segmentParts'
 import { storageKey } from '../utils/storage'
 import { parseRevertDiff } from '../utils/revertDiff'
+import { canSendMessage, mergeAssistantText, mergeMessageFile, mergeMessageText } from '../utils/messageParts'
+import * as ImagePicker from 'expo-image-picker'
+import * as DocumentPicker from 'expo-document-picker'
+import * as FileSystem from 'expo-file-system/legacy'
 
 function formatSessionError(error: any): string {
   const name = error?.name || ''
@@ -60,11 +64,17 @@ function parseMessages(raw: any[]): Message[] {
     const role = item.info?.role || 'assistant'
     const id = item.info?.id || item.id
     if (role === 'user') {
-      return { id, role: 'user', text: item.parts?.[0]?.text || '' }
+      const textPart = (item.parts || []).find((p: any) => p.type === 'text')
+      const fileParts = (item.parts || []).filter((p: any) => p.type === 'file')
+      return {
+        id, role: 'user', text: textPart?.text || '',
+        files: fileParts.map((p: any) => ({ url: p.url, mime: p.mime, filename: p.filename })),
+      }
     }
     const reasoningPart = (item.parts || []).find((p: any) => p.type === 'reasoning')
     const textParts = (item.parts || []).filter((p: any) => p.type === 'text')
     const toolParts = (item.parts || []).filter((p: any) => p.type === 'tool')
+    const fileParts = (item.parts || []).filter((p: any) => p.type === 'file')
     const errorInfo = item.info?.error
     const errorContent = errorInfo
       ? `⚠️ ${formatSessionError(errorInfo)}`
@@ -82,6 +92,7 @@ function parseMessages(raw: any[]): Message[] {
         output: p.state?.output,
         metadata: { ...(p.state?.metadata || {}), ...(p.metadata || {}) },
       })),
+      files: fileParts.map((p: any) => ({ url: p.url, mime: p.mime, filename: p.filename })),
     }
   })
 }
@@ -105,6 +116,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [cwd, setCwd] = useState('')
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [attachments, setAttachments] = useState<FileAttachment[]>([])
   const [sessionBanner, setSessionBanner] = useState<{ text: string; bg?: string } | null>(null)
   const setError = useCallback((msg: string | null) => {
     setSessionBanner(msg ? { text: msg } : null)
@@ -393,6 +405,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     let lastProcessed = 0
     let buf = ''
     const reasoningPartIds = new Set<string>()
+    const messageRoles = new Map<string, 'user' | 'assistant'>()
 
     const connect = () => {
       if (aborted) return
@@ -426,6 +439,14 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           const payload = raw?.payload || raw
           const evType: string = payload?.type || ''
           const props = payload?.properties || {}
+
+          if (evType === 'message.updated') {
+            const info = props.info
+            if (info?.sessionID === sessionId && (info.role === 'user' || info.role === 'assistant')) {
+              messageRoles.set(info.id, info.role)
+            }
+            continue
+          }
 
           if (evType === 'session.idle' && props.sessionID === sessionId) { setSending(false); setError(null); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
           if (evType === 'session.status' && props.status?.type === 'idle' && props.sessionID === sessionId) { setSending(false); setError(null); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
@@ -498,23 +519,14 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
             if (partType === 'text') {
               setMessages((prev) => {
+                const role = messageRoles.get(msgID)
                 const exists = prev.find((m) => m.id === msgID)
-                if (exists) {
-                  if (isAssistant(exists)) {
-                    return prev.map((m) => m.id === msgID && isAssistant(m)
-                      ? { ...m, reasoning: { ...m.reasoning, isActive: false } }
-                      : m
-                    )
-                  }
-                  return prev.map((m) => m.id === msgID ? { ...m, text: partText } : m)
-                }
-                const pendingIdx = prev.findIndex((m) => m.id.startsWith('u-') && m.role === 'user')
-                if (pendingIdx >= 0) {
-                  const copy = [...prev]
-                  copy[pendingIdx] = { id: msgID, role: 'user', text: partText }
-                  return copy
-                }
-                return [{ id: msgID, role: 'user', text: partText }, ...prev]
+                const hasPendingUser = prev.some((m) => m.id.startsWith('u-') && m.role === 'user')
+                const hasLoading = prev.some((m) => m.id.startsWith('loading-'))
+                if (role === 'assistant') return mergeAssistantText(prev, msgID, partText)
+                if (exists && isAssistant(exists)) return mergeAssistantText(prev, msgID, partText)
+                if (!exists && hasLoading && !hasPendingUser) return mergeAssistantText(prev, msgID, partText)
+                return mergeMessageText(prev, msgID, partText)
               })
               continue
             }
@@ -542,6 +554,12 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             if (partType === 'step-finish') {
               const t = part.tokens
               if (t) setContextTokens(t.input + t.output + t.reasoning + (t.cache?.read || 0) + (t.cache?.write || 0))
+              continue
+            }
+
+            if (partType === 'file') {
+              const fileData = { url: part.url, mime: part.mime, filename: part.filename }
+              setMessages((prev) => mergeMessageFile(prev, msgID, fileData))
               continue
             }
 
@@ -767,27 +785,32 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   }, [client, sessionId, cwd])
 
   const handleSend = useCallback(async () => {
-    if (!input.trim() || sending || !sessionId) return
+    if (!canSendMessage(input, attachments) || sending || !sessionId) return
     setSending(true)
     setError(null)
     const text = input.trim()
+    const currentAttachments = attachments
     setInput('')
+    setAttachments([])
 
     const userMsgId = `u-${Date.now()}`
     const loadingMsgId = `loading-${Date.now()}`
     setMessages((prev) => [
       { id: loadingMsgId, role: 'assistant', reasoning: { text: '', isActive: false }, content: '', toolCalls: [] },
-      { id: userMsgId, role: 'user', text },
+      { id: userMsgId, role: 'user', text, files: currentAttachments.map(a => ({ url: `data:${a.mime};base64,${a.base64}`, mime: a.mime, filename: a.filename })) },
       ...prev,
     ])
 
     try {
-      const body: any = { parts: [{ type: 'text' as any, text }] }
+      const parts: any[] = [{ type: 'text' as any, text }]
+      for (const a of currentAttachments) {
+        parts.push({ type: 'file' as any, mime: a.mime, filename: a.filename, url: `data:${a.mime};base64,${a.base64}` })
+      }
+      const body: any = { parts }
       if (currentModel) {
         body.model = { providerID: currentModel.providerID, modelID: currentModel.modelID }
       }
       if (currentAgent) {
-        console.log('Using agent:', currentAgent.name)
         body.agent = currentAgent.name
       }
       await client.client.session.promptAsync({
@@ -799,7 +822,61 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       setError(`发送失败: ${e.message}`)
       setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-')))
     }
-  }, [input, sending, sessionId, client, currentModel, currentAgent])
+  }, [input, sending, sessionId, client, currentModel, currentAgent, attachments])
+
+  const addAttachment = async (uri: string, mime: string, filename: string) => {
+    try {
+      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 })
+      setAttachments(prev => [...prev, { id: `a-${Date.now()}-${prev.length}`, uri, mime, filename, base64 }])
+    } catch (e: any) {
+      setError(`读取附件失败: ${e?.message || '未知错误'}`)
+    }
+  }
+
+  const handlePickCamera = async () => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync()
+      if (!permission.granted) {
+        setError('需要相机权限才能拍照')
+        return
+      }
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'] })
+      if (!result.canceled && result.assets[0]) {
+        const a = result.assets[0]
+        addAttachment(a.uri, a.mimeType || 'image/jpeg', a.fileName || `camera-${Date.now()}.jpg`)
+      }
+    } catch (e: any) {
+      setError(`打开相机失败: ${e?.message || '未知错误'}`)
+    }
+  }
+
+  const handlePickLibrary = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] })
+      if (!result.canceled && result.assets[0]) {
+        const a = result.assets[0]
+        addAttachment(a.uri, a.mimeType || 'image/jpeg', a.fileName || `image-${Date.now()}.jpg`)
+      }
+    } catch (e: any) {
+      setError(`打开相册失败: ${e?.message || '未知错误'}`)
+    }
+  }
+
+  const handlePickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true })
+      if (!result.canceled && result.assets[0]) {
+        const a = result.assets[0]
+        addAttachment(a.uri, a.mimeType || 'application/octet-stream', a.name)
+      }
+    } catch (e: any) {
+      setError(`选择文件失败: ${e?.message || '未知错误'}`)
+    }
+  }
+
+  const handleRemoveAttachment = (id: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== id))
+  }
 
   const isAtBottom = useRef(true)
 
@@ -898,33 +975,38 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
               />
             ) : (
               <Animated.View style={{ transform: [{ translateY: keyboardOffset }] }}>
-                <InputBar
-                  input={input}
-                  onChangeText={setInput}
-                  onSend={handleSend}
-                  onStop={handleAbort}
-                  sending={sending}
-                  disabled={pendingPermissions.length > 0 || pendingQuestions.length > 0}
-                  theme={theme}
-                  inputRef={inputRef}
-                  isKeyboardOpen={isKeyboardOpen}
-                  currentModel={currentModel}
-                  onPressModelSelector={() => setModelSelectorVisible(true)}
-                  currentAgent={currentAgent}
-                  onPressAgentSelector={() => setAgentSelectorVisible(true)}
-                  contextTokens={contextTokens}
-                  contextLimit={contextLimit}
-                />
-              </Animated.View>
-            )}
-          </>
-        ) : (
-          <ContentContainer style={contentStyle}>
-            <FlatList
-              ref={flatListRef}
-              inverted
-              data={messages}
-              keyExtractor={(item) => item.id}
+                  <InputBar
+                    input={input}
+                    onChangeText={setInput}
+                    onSend={handleSend}
+                    onStop={handleAbort}
+                    sending={sending}
+                    disabled={pendingPermissions.length > 0 || pendingQuestions.length > 0}
+                    theme={theme}
+                    inputRef={inputRef}
+                    isKeyboardOpen={isKeyboardOpen}
+                    currentModel={currentModel}
+                    onPressModelSelector={() => setModelSelectorVisible(true)}
+                    currentAgent={currentAgent}
+                    onPressAgentSelector={() => setAgentSelectorVisible(true)}
+                    contextTokens={contextTokens}
+                    contextLimit={contextLimit}
+                    attachments={attachments}
+                    onPickCamera={handlePickCamera}
+                    onPickLibrary={handlePickLibrary}
+                    onPickFile={handlePickFile}
+                    onRemoveAttachment={handleRemoveAttachment}
+                  />
+                </Animated.View>
+              )}
+            </>
+          ) : (
+            <ContentContainer style={contentStyle}>
+              <FlatList
+                ref={flatListRef}
+                inverted
+                data={messages}
+                keyExtractor={(item) => item.id}
               renderItem={({ item }: { item: ListItem }) => {
                 if (isRevertBanner(item)) {
                   return <RevertBanner banner={item} theme={theme} onUnrevert={handleUnrevert} />
@@ -982,6 +1064,11 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                 onPressAgentSelector={() => setAgentSelectorVisible(true)}
                 contextTokens={contextTokens}
                 contextLimit={contextLimit}
+                attachments={attachments}
+                onPickCamera={handlePickCamera}
+                onPickLibrary={handlePickLibrary}
+                onPickFile={handlePickFile}
+                onRemoveAttachment={handleRemoveAttachment}
               />
             )}
           </ContentContainer>

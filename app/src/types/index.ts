@@ -44,12 +44,14 @@ export interface AssistantMsg {
   reasoning: { text: string; isActive: boolean }
   content: string
   toolCalls: ToolCall[]
+  files?: { url: string; mime: string; filename?: string }[]
 }
 
 export interface UserMsg {
   id: string
   role: 'user'
   text: string
+  files?: { url: string; mime: string; filename?: string }[]
 }
 
 export type Message = UserMsg | AssistantMsg
@@ -116,6 +118,14 @@ export interface Provider {
 export interface ModelKey {
   providerID: string
   modelID: string
+}
+
+export interface FileAttachment {
+  id: string
+  uri: string
+  mime: string
+  filename: string
+  base64: string
 }
 
 export function mapToolStatus(status: string): 'running' | 'completed' | 'error' {
