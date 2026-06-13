@@ -88,7 +88,6 @@ export class LayCodeClient {
   }
 
   async getAgents(directory?: string): Promise<Agent[]> {
-    console.log('Fetching agents for directory:', directory)
     try {
       const res = await this.v2.app.agents({ directory })
       return (res.data as any) || []
