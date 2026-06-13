@@ -224,6 +224,11 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           return (item.parts || []).some((p: any) => p.type === 'tool' && (p.state?.status === 'running' || p.state?.status === 'pending'))
         })
         setSending(hasRunning)
+
+        const lastMsg = (raw as any[]).findLast(() => true)
+        if (lastMsg?.info?.agent) {
+          setCurrentAgent(lastMsg.info.agent)
+        }
       }
 
       // Providers
