@@ -321,6 +321,18 @@ export class LayCodeClient {
     }
   }
 
+  async summarizeSession(sessionId: string, modelID?: string, providerID?: string): Promise<boolean> {
+    try {
+      const body: any = {}
+      if (modelID) body.modelID = modelID
+      if (providerID) body.providerID = providerID
+      await this.v2.session.summarize({ sessionID: sessionId, ...body })
+      return true
+    } catch {
+      return false
+    }
+  }
+
   async deleteTodo(directory: string, id: string): Promise<boolean> {
     const params = `?directory=${encodeURIComponent(directory)}`
     const res = await fetch(`${this.baseUrl}/api/v1/todos/${encodeURIComponent(id)}${params}`, {

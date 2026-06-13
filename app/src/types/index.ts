@@ -61,10 +61,22 @@ export interface RevertBannerMsg {
   diffFiles: { filename: string; additions: number; deletions: number }[]
 }
 
-export type ListItem = Message | RevertBannerMsg
+export interface CompactionMsg {
+  id: string
+  role: 'compaction'
+  reason: 'auto' | 'manual'
+  summary: string
+  recent: string
+}
+
+export type ListItem = Message | RevertBannerMsg | CompactionMsg
 
 export function isRevertBanner(item: ListItem): item is RevertBannerMsg {
   return item.role === 'revert-banner'
+}
+
+export function isCompaction(item: ListItem): item is CompactionMsg {
+  return item.role === 'compaction'
 }
 
 export function isAssistant(msg: Message | ListItem): msg is AssistantMsg {
