@@ -1,7 +1,3 @@
-import React, { useMemo } from 'react'
-import { View, Text, StyleSheet, Platform } from 'react-native'
-import type { Theme } from '../theme'
-
 interface DiffLine {
   type: 'same' | 'add' | 'remove'
   text: string
@@ -19,16 +15,13 @@ function computeDiff(oldText: string, newText: string): DiffLine[] {
       oi++
       ni++
     } else {
-      // Scan ahead — try to find a matching line
       const nextMatch = newLines.indexOf(oldLines[oi], ni)
       if (nextMatch > ni && nextMatch - ni < 5) {
-        // New lines added before old line
         while (ni < nextMatch) {
           result.push({ type: 'add', text: newLines[ni] })
           ni++
         }
       } else {
-        // Lines removed
         result.push({ type: 'remove', text: oldLines[oi] })
         oi++
       }
@@ -47,51 +40,10 @@ function computeDiff(oldText: string, newText: string): DiffLine[] {
   return result
 }
 
-interface Props {
-  oldString: string
-  newString: string
-  theme: Theme
+export function getDiffText(oldString: string, newString: string): string {
+  const lines = computeDiff(oldString, newString)
+  return lines.map(line => {
+    const prefix = line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '
+    return `${prefix} ${line.text}`
+  }).join('\n')
 }
-
-export default function DiffView({ oldString, newString, theme }: Props) {
-  const lines = useMemo(() => computeDiff(oldString, newString), [oldString, newString])
-
-  return (
-    <View style={styles.container}>
-      {lines.map((line, i) => (
-        <View key={i} style={[
-          styles.line,
-          line.type === 'add' && { backgroundColor: 'rgba(52,199,89,0.12)' },
-          line.type === 'remove' && { backgroundColor: 'rgba(255,59,48,0.12)' },
-        ]}>
-          <Text style={[
-            styles.prefix,
-            line.type === 'add' && { color: '#34C759' },
-            line.type === 'remove' && { color: '#FF3B30' },
-            line.type === 'same' && { color: theme.textTertiary },
-          ]}>
-            {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}
-          </Text>
-          <Text
-            style={[
-              styles.text,
-              { color: theme.text },
-              line.type === 'add' && { color: '#34C759' },
-              line.type === 'remove' && { color: '#FF3B30' },
-            ]}
-            numberOfLines={1}
-          >
-            {line.text}
-          </Text>
-        </View>
-      ))}
-    </View>
-  )
-}
-
-const styles = StyleSheet.create({
-  container: { gap: 1 },
-  line: { flexDirection: 'row', alignItems: 'center', paddingVertical: 1, paddingHorizontal: 4, borderRadius: 2 },
-  prefix: { width: 14, fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', textAlign: 'center' },
-  text: { flex: 1, fontSize: 11, lineHeight: 16, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-})

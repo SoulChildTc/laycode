@@ -70,6 +70,7 @@ const registry: Record<string, ToolDisplayConfig> = {
     icon: '✏️',
     getTitle: (input) => pick(input, 'filePath', 'path') || '',
     detail: 'diff',
+    maxLines: 20,
     defaultCollapsed: true,
   },
   apply_patch: {
