@@ -1,5 +1,5 @@
 import React, { useRef } from 'react'
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Keyboard } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import type { Theme } from '../theme'
 import type { ModelKey, Agent } from '../types'
@@ -80,6 +80,7 @@ export default function InputBar({ input, onChangeText, onSend, onStop, sending,
             </View>
           )
         })()}
+        <View style={{ flex: 1 }} />
       </View>
       <View style={[styles.inputRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <TextInput
@@ -93,6 +94,15 @@ export default function InputBar({ input, onChangeText, onSend, onStop, sending,
           maxLength={4000}
           editable={!disabled}
         />
+        {isKeyboardOpen && (
+          <TouchableOpacity
+            onPress={() => Keyboard.dismiss()}
+            style={[styles.dismissBtn, { backgroundColor: theme.surface, borderColor: theme.border }]}
+            hitSlop={8}
+          >
+            <Feather name="chevron-down" size={16} color={theme.textSecondary} />
+          </TouchableOpacity>
+        )}
         {sending ? (
           <TouchableOpacity
             style={[styles.sendButton, { backgroundColor: theme.error }]}
@@ -130,7 +140,8 @@ const styles = StyleSheet.create({
   },
   toolbarLabel: { fontSize: 12, fontWeight: '600', maxWidth: 200 },
   agentDot: { width: 8, height: 8, borderRadius: 4 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, paddingLeft: 14, paddingRight: 6, paddingVertical: 6 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, paddingLeft: 14, paddingRight: 4, paddingVertical: 6, gap: 4 },
   input: { flex: 1, fontSize: 15, lineHeight: 22, maxHeight: 100, paddingVertical: 4 },
-  sendButton: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
+  sendButton: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  dismissBtn: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
 })
