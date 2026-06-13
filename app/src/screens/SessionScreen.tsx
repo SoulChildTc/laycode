@@ -88,6 +88,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [defaultModel, setDefaultModel] = useState<ModelKey | null>(null)
   const [revertMessageId, setRevertMessageId] = useState<string | null>(null)
   const [revertDiff, setRevertDiff] = useState<string | null>(null)
+  const [contextTokens, setContextTokens] = useState(0)
   const [parentID, setParentID] = useState<string | null>(route.params?.parentId || null)
   const [childSessions, setChildSessions] = useState<{ id: string; title: string; agent: string }[]>([])
   const [showChildSessions, setShowChildSessions] = useState(false)
@@ -298,6 +299,10 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           modelID: lastAssistant.info.modelID,
         })
       }
+      if (lastAssistant?.info?.tokens) {
+        const t = lastAssistant.info.tokens
+        setContextTokens(t.input + t.output + t.reasoning + (t.cache?.read || 0) + (t.cache?.write || 0))
+      }
     }
 
     loadSessionAndMessages().catch((e) => setError(`加载消息失败: ${e.message}`))
@@ -489,6 +494,12 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                 }
                 return { ...m, toolCalls: [...m.toolCalls, tc] }
               }))
+              continue
+            }
+
+            if (partType === 'step-finish') {
+              const t = part.tokens
+              if (t) setContextTokens(t.input + t.output + t.reasoning + (t.cache?.read || 0) + (t.cache?.write || 0))
               continue
             }
 
@@ -824,6 +835,9 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const headerSubtitle = headerAgentName ? `${headerAgentName} · ${headerModelCwd}` : headerModelCwd
   const ContentContainer = Animated.View
   const contentStyle = [styles.contentArea, { transform: [{ translateY: keyboardOffset }] }]
+  const contextLimit = currentModel
+    ? providers.find((p) => p.id === currentModel.providerID)?.models[currentModel.modelID]?.limit?.context
+    : undefined
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]} edges={['top']}>
@@ -893,6 +907,8 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                   onPressModelSelector={() => setModelSelectorVisible(true)}
                   currentAgent={currentAgent}
                   onPressAgentSelector={() => setAgentSelectorVisible(true)}
+                  contextTokens={contextTokens}
+                  contextLimit={contextLimit}
                 />
               </Animated.View>
             )}
@@ -948,6 +964,8 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                 onPressModelSelector={() => setModelSelectorVisible(true)}
                 currentAgent={currentAgent}
                 onPressAgentSelector={() => setAgentSelectorVisible(true)}
+                contextTokens={contextTokens}
+                contextLimit={contextLimit}
               />
             )}
           </ContentContainer>
