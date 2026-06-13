@@ -306,7 +306,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       setProviders(res.providers)
       const defaults = Object.entries(res.default)
       if (defaults.length > 0) {
-        const [providerID, modelID] = defaults[0]
+        const [providerID, modelID] = defaults[defaults.length - 1]
         setDefaultModel({ providerID, modelID })
       }
     }).catch(() => {})
