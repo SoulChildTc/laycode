@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View, Platform, Modal, SafeAreaView } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { getToolConfig, getLanguageFromPath } from './toolConfig'
-import DiffView from './DiffView'
+import { getDiffText } from './DiffView'
 import CodeBlockWrapper from './CodeBlockWrapper'
 import type { Theme } from '../theme'
 
@@ -82,13 +82,14 @@ function ToolSpinner({ color }: { color: string }) {
   )
 }
 
-function FullscreenModal({ visible, content, language, title, theme, onClose }: {
+function FullscreenModal({ visible, content, language, title, theme, onClose, children }: {
   visible: boolean
-  content: string
+  content?: string
   language?: string
   title: string
   theme: Theme
   onClose: () => void
+  children?: React.ReactNode
 }) {
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -100,7 +101,7 @@ function FullscreenModal({ visible, content, language, title, theme, onClose }: 
           </TouchableOpacity>
         </View>
         <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
-          <CodeBlockWrapper language={language || 'text'} content={content} theme={theme} />
+          {children || <CodeBlockWrapper language={language || 'text'} content={content || ''} theme={theme} />}
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -117,15 +118,23 @@ function DetailContent({ name, config, input, output, theme }: {
   const [fullContent, setFullContent] = useState<string | null>(null)
   const maxLines = config.maxLines || 15
 
-  // Diff view — no scroll issues, render directly
+  // Diff view
   if (config.detail === 'diff') {
     if (name === 'edit') {
       const oldStr = input?.oldString || input?.old || ''
       const newStr = input?.newString || input?.new || ''
       if (!oldStr && !newStr) return null
+      const diffText = getDiffText(oldStr, newStr)
+      const { text, truncated } = truncateLines(diffText, maxLines)
       return (
-        <View style={styles.detailSection}>
-          <DiffView oldString={oldStr} newString={newStr} theme={theme} />
+        <View style={styles.detailSectionCompact}>
+          <CodeBlockWrapper language="diff" content={text} theme={theme} noBorder />
+          {truncated && (
+            <TouchableOpacity onPress={() => setFullContent(diffText)} style={styles.expandBtn}>
+              <Text style={[styles.expandText, { color: theme.toolSuccessText }]}>展开全文</Text>
+            </TouchableOpacity>
+          )}
+          <FullscreenModal visible={!!fullContent} content={fullContent || ''} language="diff" title={name} theme={theme} onClose={() => setFullContent(null)} />
         </View>
       )
     }

@@ -1,5 +1,6 @@
-import React, { useRef, useState, useCallback } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Platform } from 'react-native'
+import { Feather } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
 import { createLowlight, common } from 'lowlight'
 
@@ -13,12 +14,36 @@ interface Props {
   noBorder?: boolean
 }
 
-function renderHighlighted(code: string, language: string, textColor: string): React.ReactNode {
+interface LineData {
+  num: number
+  text: string
+  color?: string
+  bg?: string
+  parts?: { text: string; color: string }[]
+}
+
+function getDiffLineBg(lineText: string): string | undefined {
+  if (lineText.startsWith('+')) return 'rgba(52,199,89,0.12)'
+  if (lineText.startsWith('-')) return 'rgba(255,59,48,0.12)'
+  return undefined
+}
+
+function highlightLines(code: string, language: string, textColor: string): LineData[] {
+  const codeLines = code.split('\n')
+
+  if (language === 'diff') {
+    return codeLines.map((line, i) => ({
+      num: i + 1,
+      text: line,
+      color: line.startsWith('+') ? '#34C759' : line.startsWith('-') ? '#FF3B30' : textColor,
+      bg: getDiffLineBg(line),
+    }))
+  }
+
   try {
     const tree = lowlight.highlight(language, code)
-    const lines: React.ReactNode[] = []
-    let currentLine: React.ReactElement[] = []
-    let keyCounter = 0
+    const result: { parts: { text: string; color: string }[] }[] = []
+    let currentParts: { text: string; color: string }[] = []
 
     for (const node of tree.children as any[]) {
       let text: string
@@ -35,28 +60,31 @@ function renderHighlighted(code: string, language: string, textColor: string): R
 
       const parts = text.split('\n')
       if (parts[0]) {
-        currentLine.push(<Text key={keyCounter++} style={{ color }}>{parts[0]}</Text>)
+        currentParts.push({ text: parts[0], color })
       }
       for (let i = 1; i < parts.length; i++) {
-        lines.push(<View key={`l${lines.length}`} style={styles.lineRow}>{currentLine}</View>)
-        currentLine = []
+        result.push({ parts: currentParts })
+        currentParts = []
         if (parts[i]) {
-          currentLine.push(<Text key={keyCounter++} style={{ color }}>{parts[i]}</Text>)
+          currentParts.push({ text: parts[i], color })
         }
       }
     }
-
-    if (currentLine.length > 0) {
-      lines.push(<View key={`l${lines.length}`} style={styles.lineRow}>{currentLine}</View>)
+    if (currentParts.length > 0) {
+      result.push({ parts: currentParts })
     }
 
-    return lines
+    return result.map((line, i) => ({
+      num: i + 1,
+      text: line.parts.map(p => p.text).join(''),
+      parts: line.parts,
+    }))
   } catch (e) {
-    return code.split('\n').map((line, i) => (
-      <View key={i} style={styles.lineRow}>
-        <Text style={{ color: textColor }}>{line}</Text>
-      </View>
-    ))
+    return codeLines.map((line, i) => ({
+      num: i + 1,
+      text: line,
+      color: textColor,
+    }))
   }
 }
 
@@ -90,13 +118,18 @@ const HIGHLIGHT_COLORS: Record<string, string> = {
   'hljs-addition': '#c3e88d',
 }
 
-let themeColors = { text: '#e8e8f0' }
+function codeAlpha(theme: Theme, alpha: number): string {
+  const hex = theme.text === '#e8e8f0' ? 'ffffff' : '000000'
+  const a = Math.round(alpha * 255).toString(16).padStart(2, '0')
+  return `#${hex}${a}`
+}
 
 export default function CodeBlockWrapper({ language, content, theme }: Props) {
   const [copied, setCopied] = useState(false)
+  const [wrap, setWrap] = useState(false)
   const normalized = content.endsWith('\n') ? content.slice(0, -1) : content
-  const lines = normalized.split('\n')
-  const highlighted = useRef(renderHighlighted(normalized, language || 'text', theme.text))
+
+  const lines = useMemo(() => highlightLines(normalized, language || 'text', theme.text), [normalized, language, theme.text])
 
   const handleCopy = useCallback(() => {
     Clipboard.setStringAsync(content).then(() => {
@@ -105,10 +138,38 @@ export default function CodeBlockWrapper({ language, content, theme }: Props) {
     }).catch(() => {})
   }, [content])
 
+  const renderLine = (line: LineData, i: number) => {
+    const rowStyle = [styles.lineRow, line.bg ? { backgroundColor: line.bg } : undefined]
+
+    return (
+      <View key={i} style={rowStyle}>
+        <Text style={[styles.lineNum, { color: theme.codeLineNumber }]}>{line.num}</Text>
+        {line.parts ? (
+          <Text style={[styles.lineCode, wrap && styles.lineCodeWrap, { color: theme.text }]}>
+            {line.parts.map((p, j) => (
+              <Text key={j} style={{ color: p.color }}>{p.text}</Text>
+            ))}
+          </Text>
+        ) : (
+          <Text style={[styles.lineCode, wrap && styles.lineCodeWrap, { color: line.color || theme.text }]}>
+            {line.text}
+          </Text>
+        )}
+      </View>
+    )
+  }
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.codeBg, borderColor: theme.border }]}>
+    <View style={[styles.container, { backgroundColor: theme.codeBg }]}>
       <View style={[styles.header, { backgroundColor: theme.codeHeader }]}>
         <Text style={[styles.lang, { color: theme.textTertiary }]}>{language || 'code'}</Text>
+        <TouchableOpacity
+          onPress={() => setWrap(!wrap)}
+          style={[styles.toggleButton, wrap && { backgroundColor: codeAlpha(theme, 0.15) }]}
+          activeOpacity={0.7}
+        >
+          <Feather name="align-left" size={13} color={theme.text} />
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={handleCopy}
           style={[styles.copyButton, { backgroundColor: codeAlpha(theme, 0.06) }]}
@@ -119,32 +180,23 @@ export default function CodeBlockWrapper({ language, content, theme }: Props) {
           </Text>
         </TouchableOpacity>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.codeRow}>
-          <View style={[styles.lineNumbers, { borderRightColor: codeAlpha(theme, 0.04) }]}>
-            {lines.map((_, i) => (
-              <Text key={i} style={[styles.lineNumber, { color: theme.codeLineNumber }]}>
-                {i + 1}
-              </Text>
-            ))}
-          </View>
-          <View style={styles.codeContent}>
-            {highlighted.current}
-          </View>
+      {wrap ? (
+        <View style={styles.codeArea}>
+          {lines.map(renderLine)}
         </View>
-      </ScrollView>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.codeArea}>
+            {lines.map(renderLine)}
+          </View>
+        </ScrollView>
+      )}
     </View>
   )
 }
 
-function codeAlpha(theme: Theme, alpha: number): string {
-  const hex = theme.text === '#e8e8f0' ? 'ffffff' : '000000'
-  const a = Math.round(alpha * 255).toString(16).padStart(2, '0')
-  return `#${hex}${a}`
-}
-
 const styles = StyleSheet.create({
-  container: { borderRadius: 10, marginVertical: 6, borderWidth: 1, overflow: 'hidden' },
+  container: { borderRadius: 10, marginVertical: 6, overflow: 'hidden' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -152,20 +204,34 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   lang: { fontSize: 11, fontWeight: '600', flex: 1, textTransform: 'lowercase' },
+  toggleButton: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginRight: 6 },
   copyButton: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   copyText: { fontSize: 11 },
-  codeRow: { flexDirection: 'row', minWidth: '100%' },
-  lineNumbers: {
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderRightWidth: 1,
-    alignItems: 'flex-end',
-  },
-  lineNumber: { fontSize: 11, lineHeight: 20, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  codeContent: {
+  codeArea: {
     paddingVertical: 12,
     paddingHorizontal: 14,
+  },
+  lineRow: {
+    flexDirection: 'row',
+    minHeight: 20,
+  },
+  lineNum: {
+    width: 36,
+    fontSize: 11,
+    lineHeight: 20,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    textAlign: 'right',
+    paddingRight: 12,
+    marginRight: 12,
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(128,128,128,0.15)',
+  },
+  lineCode: {
+    fontSize: 11,
+    lineHeight: 20,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  lineCodeWrap: {
     flex: 1,
   },
-  lineRow: { flexDirection: 'row', height: 20 },
 })
