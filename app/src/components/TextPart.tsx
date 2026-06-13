@@ -1,5 +1,6 @@
-import React from 'react'
-import { useWindowDimensions, TextStyle, ViewStyle } from 'react-native'
+import React, { useState } from 'react'
+import { useWindowDimensions, TextStyle, ViewStyle, Modal, SafeAreaView, TouchableOpacity, ScrollView, View, StyleSheet, Text } from 'react-native'
+import { Feather } from '@expo/vector-icons'
 import Markdown from 'react-native-markdown-display'
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
 export default function TextPart({ text, theme, isUser }: Props) {
   if (!text) return null
   const { width } = useWindowDimensions()
+  const [fullscreen, setFullscreen] = useState(false)
 
   const style: Record<string, TextStyle | ViewStyle> = {
     body: { color: isUser ? '#fff' : theme.text, fontSize: 15, lineHeight: 24 },
@@ -50,5 +52,48 @@ export default function TextPart({ text, theme, isUser }: Props) {
     em: { fontStyle: 'italic' as const },
   }
 
-  return <Markdown style={style}>{text}</Markdown>
+  const fullscreenStyle: Record<string, TextStyle | ViewStyle> = {
+    ...style,
+    body: { ...style.body as TextStyle, fontSize: 16, lineHeight: 26 },
+    heading1: { ...style.heading1 as TextStyle, fontSize: 22 },
+    heading2: { ...style.heading2 as TextStyle, fontSize: 20 },
+    heading3: { ...style.heading3 as TextStyle, fontSize: 18 },
+  }
+
+  return (
+    <>
+      <TouchableOpacity onLongPress={() => setFullscreen(true)} activeOpacity={0.9}>
+        <Markdown style={style}>{text}</Markdown>
+      </TouchableOpacity>
+      <Modal visible={fullscreen} animationType="slide" onRequestClose={() => setFullscreen(false)}>
+        <SafeAreaView style={[styles.modalContainer, { backgroundColor: theme.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>内容</Text>
+            <TouchableOpacity onPress={() => setFullscreen(false)} style={styles.modalClose}>
+              <Feather name="x" size={20} color={theme.text} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
+            <Markdown style={fullscreenStyle}>{text}</Markdown>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </>
+  )
 }
+
+const styles = StyleSheet.create({
+  modalContainer: { flex: 1 },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  modalTitle: { fontSize: 16, fontWeight: '600' },
+  modalClose: { padding: 4 },
+  modalScroll: { flex: 1 },
+  modalContent: { padding: 16 },
+})
