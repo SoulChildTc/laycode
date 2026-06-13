@@ -196,6 +196,7 @@ export interface Todo {
   id: string
   text: string
   done: boolean
+  urgent?: boolean
   createdAt: number
   updatedAt: number
 }

@@ -292,7 +292,7 @@ export class LayCodeClient {
     return res.json()
   }
 
-  async updateTodo(directory: string, id: string, update: { text?: string; done?: boolean }): Promise<Todo | null> {
+  async updateTodo(directory: string, id: string, update: { text?: string; done?: boolean; urgent?: boolean }): Promise<Todo | null> {
     const params = `?directory=${encodeURIComponent(directory)}`
     const res = await fetch(`${this.baseUrl}/api/v1/todos/${encodeURIComponent(id)}${params}`, {
       method: 'PATCH',

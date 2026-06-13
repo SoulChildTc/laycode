@@ -10,7 +10,6 @@ import WorkspaceScreen from '../screens/WorkspaceScreen'
 import SessionScreen from '../screens/SessionScreen'
 import FileExplorerScreen from '../screens/FileExplorerScreen'
 import SettingsScreen from '../screens/SettingsScreen'
-import TodoScreen from '../screens/TodoScreen'
 import TodoSummaryScreen from '../screens/TodoSummaryScreen'
 import { LayCodeClient } from '../api/client'
 import { ThemeMode, getTheme } from '../theme'
@@ -22,7 +21,6 @@ export type RootStackParamList = {
   BrowseWorkspace: undefined
   Workspace: { directory: string; name: string }
   Session: { projectId: string; sessionId: string }
-  Todo: { directory: string; name: string }
 }
 
 export type TabParamList = {
@@ -115,9 +113,6 @@ export default function RootNavigator({ screenProps }: { screenProps: ScreenProp
         </Stack.Screen>
         <Stack.Screen name="Session">
           {(props) => <SessionScreen {...props} themeMode={themeMode} client={client!} config={config!} />}
-        </Stack.Screen>
-        <Stack.Screen name="Todo">
-          {(props) => <TodoScreen {...props} themeMode={themeMode} client={client!} />}
         </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>
