@@ -9,6 +9,7 @@ interface Todo {
   id: string
   text: string
   done: boolean
+  urgent: boolean
   createdAt: number
   updatedAt: number
 }
@@ -59,6 +60,7 @@ export function addTodo(directory: string, text: string): Todo {
     id: crypto.randomUUID(),
     text,
     done: false,
+    urgent: false,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }
@@ -67,12 +69,13 @@ export function addTodo(directory: string, text: string): Todo {
   return todo
 }
 
-export function updateTodo(directory: string, id: string, update: { text?: string; done?: boolean }): Todo | null {
+export function updateTodo(directory: string, id: string, update: { text?: string; done?: boolean; urgent?: boolean }): Todo | null {
   const list = readTodos(directory)
   const item = list.items.find(t => t.id === id)
   if (!item) return null
   if (update.text !== undefined) item.text = update.text
   if (update.done !== undefined) item.done = update.done
+  if (update.urgent !== undefined) item.urgent = update.urgent
   item.updatedAt = Date.now()
   writeTodos(list)
   return item

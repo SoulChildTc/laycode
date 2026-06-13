@@ -23,7 +23,7 @@ import { parseRevertDiff } from '../utils/revertDiff'
 import { canSendMessage, mergeAssistantText, mergeMessageFile, mergeMessageText } from '../utils/messageParts'
 import * as ImagePicker from 'expo-image-picker'
 import * as DocumentPicker from 'expo-document-picker'
-import * as FileSystem from 'expo-file-system/legacy'
+import { File } from 'expo-file-system'
 
 function formatSessionError(error: any): string {
   const name = error?.name || ''
@@ -826,7 +826,13 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
   const addAttachment = async (uri: string, mime: string, filename: string) => {
     try {
-      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 })
+      const file = new File(uri)
+      const bytes = await file.bytes()
+      let binary = ''
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i])
+      }
+      const base64 = btoa(binary)
       setAttachments(prev => [...prev, { id: `a-${Date.now()}-${prev.length}`, uri, mime, filename, base64 }])
     } catch (e: any) {
       setError(`读取附件失败: ${e?.message || '未知错误'}`)
@@ -852,10 +858,14 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
   const handlePickLibrary = async () => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] })
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], base64: true })
       if (!result.canceled && result.assets[0]) {
         const a = result.assets[0]
-        addAttachment(a.uri, a.mimeType || 'image/jpeg', a.fileName || `image-${Date.now()}.jpg`)
+        if (a.base64) {
+          setAttachments(prev => [...prev, { id: `a-${Date.now()}-${prev.length}`, uri: a.uri, mime: a.mimeType || 'image/jpeg', filename: a.fileName || `image-${Date.now()}.jpg`, base64: a.base64! }])
+        } else {
+          addAttachment(a.uri, a.mimeType || 'image/jpeg', a.fileName || `image-${Date.now()}.jpg`)
+        }
       }
     } catch (e: any) {
       setError(`打开相册失败: ${e?.message || '未知错误'}`)
