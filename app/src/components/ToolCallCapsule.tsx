@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View, Platform, Modal, SafeAreaView } from 'react-native'
+import { Animated, StyleSheet, Text, TouchableOpacity, View, Platform } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { getToolConfig, getLanguageFromPath } from './toolConfig'
 import { getDiffText } from './DiffView'
@@ -45,12 +45,6 @@ function formatOutput(v: any): string {
   try { return JSON.stringify(v, null, 2) } catch { return String(v) }
 }
 
-function truncateLines(text: string, maxLines: number): { text: string; truncated: boolean } {
-  const lines = text.split('\n')
-  if (lines.length <= maxLines) return { text, truncated: false }
-  return { text: lines.slice(0, maxLines).join('\n') + `\n… ${lines.length - maxLines} 行已折叠`, truncated: true }
-}
-
 function shortenPath(path: string, cwd?: string): string {
   if (!cwd || !path.startsWith(cwd)) return path
   const rest = path.slice(cwd.length)
@@ -82,32 +76,6 @@ function ToolSpinner({ color }: { color: string }) {
   )
 }
 
-function FullscreenModal({ visible, content, language, title, theme, onClose, children }: {
-  visible: boolean
-  content?: string
-  language?: string
-  title: string
-  theme: Theme
-  onClose: () => void
-  children?: React.ReactNode
-}) {
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={[styles.modalContainer, { backgroundColor: theme.background }]}>
-        <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-          <Text style={[styles.modalTitle, { color: theme.text }]} numberOfLines={1}>{title}</Text>
-          <TouchableOpacity onPress={onClose} style={styles.modalClose}>
-            <Feather name="x" size={20} color={theme.text} />
-          </TouchableOpacity>
-        </View>
-        <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
-          {children || <CodeBlockWrapper language={language || 'text'} content={content || ''} theme={theme} />}
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
-  )
-}
-
 function DetailContent({ name, config, input, output, theme }: {
   name: string
   config: ReturnType<typeof getToolConfig>
@@ -115,49 +83,48 @@ function DetailContent({ name, config, input, output, theme }: {
   output: any
   theme: Theme
 }) {
-  const [fullContent, setFullContent] = useState<string | null>(null)
   const maxLines = config.maxLines || 15
 
-  // Diff view
   if (config.detail === 'diff') {
     if (name === 'edit') {
       const oldStr = input?.oldString || input?.old || ''
       const newStr = input?.newString || input?.new || ''
       if (!oldStr && !newStr) return null
       const diffText = getDiffText(oldStr, newStr)
-      const { text, truncated } = truncateLines(diffText, maxLines)
+      const truncated = diffText.split('\n').length > maxLines
+      const preview = truncated ? diffText.split('\n').slice(0, maxLines).join('\n') : undefined
       return (
         <View style={styles.detailSectionCompact}>
-          <CodeBlockWrapper language="diff" content={text} theme={theme} noBorder />
-          {truncated && (
-            <TouchableOpacity onPress={() => setFullContent(diffText)} style={styles.expandBtn}>
-              <Text style={[styles.expandText, { color: theme.toolSuccessText }]}>展开全文</Text>
-            </TouchableOpacity>
-          )}
-          <FullscreenModal visible={!!fullContent} content={fullContent || ''} language="diff" title={name} theme={theme} onClose={() => setFullContent(null)} />
+          <CodeBlockWrapper
+            language="diff"
+            content={preview || diffText}
+            fullContent={truncated ? diffText : undefined}
+            theme={theme}
+            noBorder
+          />
         </View>
       )
     }
     if (name === 'apply_patch') {
       const patchText = input?.patchText || ''
       if (!patchText) return null
-      const { text, truncated } = truncateLines(patchText, maxLines)
+      const truncated = patchText.split('\n').length > maxLines
+      const preview = truncated ? patchText.split('\n').slice(0, maxLines).join('\n') : undefined
       return (
-        <View style={styles.detailSection}>
-          <Text style={[styles.monoText, { color: theme.textSecondary }]}>{text}</Text>
-          {truncated && (
-            <TouchableOpacity onPress={() => setFullContent(patchText)} style={styles.expandBtn}>
-              <Text style={[styles.expandText, { color: theme.toolSuccessText }]}>展开全文</Text>
-            </TouchableOpacity>
-          )}
-          <FullscreenModal visible={!!fullContent} content={fullContent || ''} title={name} theme={theme} onClose={() => setFullContent(null)} />
+        <View style={styles.detailSectionCompact}>
+          <CodeBlockWrapper
+            language="diff"
+            content={preview || patchText}
+            fullContent={truncated ? patchText : undefined}
+            theme={theme}
+            noBorder
+          />
         </View>
       )
     }
     return null
   }
 
-  // Gather content text based on detail type
   let rawContent = ''
   let codeLang: string | undefined
 
@@ -175,36 +142,24 @@ function DetailContent({ name, config, input, output, theme }: {
       if (outStr) parts.push(outStr)
     }
     rawContent = parts.join('\n')
+    codeLang = 'text'
   }
 
   if (!rawContent) return null
 
-  const { text, truncated } = truncateLines(rawContent, maxLines)
-
-  // Use CodeBlockWrapper for file content (write), plain text for others
-  if (config.detail === 'full-content' && codeLang) {
-    return (
-      <View style={styles.detailSectionCompact}>
-        <CodeBlockWrapper language={codeLang} content={text} theme={theme} />
-        {truncated && (
-          <TouchableOpacity onPress={() => setFullContent(rawContent)} style={styles.expandBtn}>
-            <Text style={[styles.expandText, { color: theme.toolSuccessText }]}>展开全文</Text>
-          </TouchableOpacity>
-        )}
-        <FullscreenModal visible={!!fullContent} content={fullContent || ''} language={codeLang} title={name} theme={theme} onClose={() => setFullContent(null)} />
-      </View>
-    )
-  }
+  const truncated = rawContent.split('\n').length > maxLines
+  const preview = truncated ? rawContent.split('\n').slice(0, maxLines).join('\n') : undefined
+  const lang = codeLang || 'text'
 
   return (
-    <View style={styles.detailSection}>
-      <Text style={[styles.monoText, { color: theme.textSecondary }]}>{text}</Text>
-      {truncated && (
-        <TouchableOpacity onPress={() => setFullContent(rawContent)} style={styles.expandBtn}>
-          <Text style={[styles.expandText, { color: theme.toolSuccessText }]}>展开全文</Text>
-        </TouchableOpacity>
-      )}
-      <FullscreenModal visible={!!fullContent} content={fullContent || ''} title={name} theme={theme} onClose={() => setFullContent(null)} />
+    <View style={styles.detailSectionCompact}>
+      <CodeBlockWrapper
+        language={lang}
+        content={preview || rawContent}
+        fullContent={truncated ? rawContent : undefined}
+        theme={theme}
+        noBorder
+      />
     </View>
   )
 }
@@ -343,50 +298,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
-  detailSection: {
-    padding: 10,
-  },
   detailSectionCompact: {
     padding: 0,
-  },
-  monoText: {
-    fontSize: 11,
-    lineHeight: 16,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  expandBtn: {
-    marginTop: 8,
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  expandText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  modalContainer: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  modalTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  modalClose: {
-    padding: 4,
-  },
-  modalScroll: {
-    flex: 1,
-  },
-  modalScrollContent: {
-    padding: 16,
-    paddingBottom: 40,
   },
   taskCapsule: {
     flexDirection: 'row',
