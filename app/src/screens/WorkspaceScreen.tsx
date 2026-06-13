@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
-import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, Animated, Modal, LayoutAnimation, Platform, UIManager } from 'react-native'
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Animated, LayoutAnimation, Platform, UIManager } from 'react-native'
 import { Swipeable } from 'react-native-gesture-handler'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -11,6 +11,7 @@ import { LayCodeClient } from '../api/client'
 import type { Session } from '@opencode-ai/sdk'
 import type { Agent, ServerEntry } from '../types'
 import { storageKey } from '../utils/storage'
+import { InputModal, InputField, MetaRow } from '../components/InputModal'
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true)
@@ -36,7 +37,6 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
   const [renamingSession, setRenamingSession] = useState<Session | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const openSwipeRef = useRef<Swipeable | null>(null)
-  const renameInputRef = useRef<TextInput>(null)
   const toastAnim = useRef(new Animated.Value(0)).current
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -60,10 +60,6 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
       setAgents(filtered)
     }).catch(() => {})
   }, [directory, client])
-
-  useEffect(() => {
-    if (renamingSession) setTimeout(() => renameInputRef.current?.focus(), 200)
-  }, [renamingSession])
 
   const animCfg = { duration: 220, create: { type: 'easeInEaseOut' as const, property: 'opacity' as const }, update: { type: 'spring' as const, springDamping: 0.85 }, delete: { type: 'easeInEaseOut' as const, duration: 160 } }
 
@@ -285,42 +281,24 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
         <Feather name="plus" size={24} color="#fff" />
       </TouchableOpacity>
 
-      {renamingSession && (
-        <Modal visible animationType="slide" onRequestClose={cancelRename}>
-          <View style={[styles.editScreen, { backgroundColor: theme.background }]}>
-            <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
-              <View style={[styles.editHeader, { borderBottomColor: theme.border }]}>
-                <TouchableOpacity onPress={cancelRename} hitSlop={10} style={styles.editHeaderBtn}>
-                  <Feather name="x" size={22} color={theme.textSecondary} />
-                  <Text style={[styles.editHeaderText, { color: theme.textSecondary }]}>取消</Text>
-                </TouchableOpacity>
-                <Text style={[styles.editHeaderTitle, { color: theme.text }]}>重命名</Text>
-                <TouchableOpacity onPress={saveRename} hitSlop={10} style={styles.editHeaderBtn}>
-                  <Text style={[styles.editHeaderText, { color: theme.accent, fontWeight: '700' }]}>保存</Text>
-                  <Feather name="check" size={22} color={theme.accent} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.editBody}>
-                <TextInput
-                  ref={renameInputRef}
-                  value={renameValue}
-                  onChangeText={setRenameValue}
-                  placeholder="输入会话标题..."
-                  placeholderTextColor={theme.textTertiary}
-                  style={[styles.editInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
-                />
-                <View style={styles.editMeta}>
-                  <Feather name="hash" size={13} color={theme.textTertiary} />
-                  <Text style={[styles.editMetaText, { color: theme.textTertiary }]}>
-                    {renamingSession.id.slice(0, 8)}
-                  </Text>
-                </View>
-              </View>
-            </SafeAreaView>
-          </View>
-        </Modal>
-      )}
+      <InputModal
+        visible={renamingSession !== null}
+        title="重命名"
+        theme={theme}
+        onCancel={cancelRename}
+        onSave={saveRename}
+      >
+        <InputField
+          value={renameValue}
+          onChangeText={setRenameValue}
+          placeholder="输入会话标题..."
+          theme={theme}
+          onSubmitEditing={saveRename}
+        />
+        {renamingSession && (
+          <MetaRow icon="hash" text={renamingSession.id.slice(0, 8)} theme={theme} />
+        )}
+      </InputModal>
 
       <Animated.View
         pointerEvents="none"
@@ -391,23 +369,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4,
   },
-  editScreen: { flex: 1 },
-  editHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  editHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  editHeaderText: { fontSize: 15 },
-  editHeaderTitle: { fontSize: 17, fontWeight: '700' },
-  editBody: { flex: 1, padding: 16 },
-  editInput: {
-    fontSize: 16, lineHeight: 24,
-    borderRadius: 12, borderWidth: 1,
-    padding: 16,
-  },
-  editMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
-  editMetaText: { fontSize: 13 },
   toast: {
     position: 'absolute',
     bottom: 100,

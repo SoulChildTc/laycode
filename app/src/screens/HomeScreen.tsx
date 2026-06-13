@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, Animated, Modal, LayoutAnimation, Platform, UIManager } from 'react-native'
+import React, { useState, useCallback, useRef } from 'react'
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Animated, LayoutAnimation, Platform, UIManager } from 'react-native'
 import { Swipeable } from 'react-native-gesture-handler'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -9,6 +9,7 @@ import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient } from '../api/client'
 import { ServerEntry } from '../types'
 import { storageKey } from '../utils/storage'
+import { InputModal, InputField, MetaRow } from '../components/InputModal'
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true)
@@ -36,7 +37,6 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
   const [aliasText, setAliasText] = useState('')
   const key = storageKey(config.id, 'workspaces')
   const openSwipeRef = useRef<Swipeable | null>(null)
-  const aliasInputRef = useRef<TextInput>(null)
 
   const load = useCallback(async () => {
     try {
@@ -58,10 +58,6 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
   }, [client, key])
 
   useFocusEffect(useCallback(() => { load() }, [load]))
-
-  useEffect(() => {
-    if (editingWs) setTimeout(() => aliasInputRef.current?.focus(), 200)
-  }, [editingWs])
 
   const animCfg = { duration: 220, create: { type: 'easeInEaseOut' as const, property: 'opacity' as const }, update: { type: 'spring' as const, springDamping: 0.85 }, delete: { type: 'easeInEaseOut' as const, duration: 160 } }
 
@@ -189,48 +185,27 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
         <Text style={styles.fabText}>＋</Text>
       </TouchableOpacity>
 
-      {editingWs && (
-        <Modal visible animationType="slide" onRequestClose={cancelAlias}>
-          <View style={[styles.editScreen, { backgroundColor: theme.background }]}>
-            <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
-              <View style={[styles.editHeader, { borderBottomColor: theme.border }]}>
-                <TouchableOpacity onPress={cancelAlias} hitSlop={10} style={styles.editHeaderBtn}>
-                  <Feather name="x" size={22} color={theme.textSecondary} />
-                  <Text style={[styles.editHeaderText, { color: theme.textSecondary }]}>取消</Text>
-                </TouchableOpacity>
-                <Text style={[styles.editHeaderTitle, { color: theme.text }]}>设置别名</Text>
-                <TouchableOpacity onPress={saveAlias} hitSlop={10} style={styles.editHeaderBtn}>
-                  <Text style={[styles.editHeaderText, { color: theme.accent, fontWeight: '700' }]}>保存</Text>
-                  <Feather name="check" size={22} color={theme.accent} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.editBody}>
-                <TextInput
-                  ref={aliasInputRef}
-                  value={aliasText}
-                  onChangeText={setAliasText}
-                  placeholder="输入别名..."
-                  placeholderTextColor={theme.textTertiary}
-                  style={[styles.editInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
-                />
-                <View style={styles.editMeta}>
-                  <Feather name="folder" size={13} color={theme.textTertiary} />
-                  <Text style={[styles.editMetaText, { color: theme.textTertiary }]}>
-                    {editingWs.path}
-                  </Text>
-                </View>
-                <View style={styles.editMeta}>
-                  <Feather name="info" size={13} color={theme.textTertiary} />
-                  <Text style={[styles.editMetaText, { color: theme.textTertiary }]}>
-                    别名为空则显示原始名称
-                  </Text>
-                </View>
-              </View>
-            </SafeAreaView>
-          </View>
-        </Modal>
-      )}
+      <InputModal
+        visible={editingWs !== null}
+        title="设置别名"
+        theme={theme}
+        onCancel={cancelAlias}
+        onSave={saveAlias}
+      >
+        <InputField
+          value={aliasText}
+          onChangeText={setAliasText}
+          placeholder="输入别名..."
+          theme={theme}
+          onSubmitEditing={saveAlias}
+        />
+        {editingWs && (
+          <>
+            <MetaRow icon="folder" text={editingWs.path} theme={theme} />
+            <MetaRow icon="info" text="别名为空则显示原始名称" theme={theme} />
+          </>
+        )}
+      </InputModal>
     </SafeAreaView>
   )
 }
@@ -287,21 +262,4 @@ const styles = StyleSheet.create({
     elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4,
   },
   fabText: { color: '#fff', fontSize: 28, lineHeight: 30 },
-  editScreen: { flex: 1 },
-  editHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  editHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  editHeaderText: { fontSize: 15 },
-  editHeaderTitle: { fontSize: 17, fontWeight: '700' },
-  editBody: { flex: 1, padding: 16 },
-  editInput: {
-    fontSize: 16, lineHeight: 24,
-    borderRadius: 12, borderWidth: 1,
-    padding: 16,
-  },
-  editMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
-  editMetaText: { fontSize: 13, flex: 1 },
 })
