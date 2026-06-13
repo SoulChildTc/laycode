@@ -325,10 +325,8 @@ const s = StyleSheet.create({
   rowText: { fontSize: 15, lineHeight: 22 },
   swipeActions: {
     flexDirection: 'row',
-    marginBottom: StyleSheet.hairlineWidth,
     borderRadius: 12,
     overflow: 'hidden',
-    marginLeft: 4,
   },
   copyBtn: {
     backgroundColor: '#6c7dff',
