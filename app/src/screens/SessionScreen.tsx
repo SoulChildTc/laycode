@@ -15,8 +15,8 @@ import AgentSelectorModal from '../components/AgentSelectorModal'
 import RevertBanner from '../components/RevertBanner'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import { useAgents } from '../hooks/useAgents'
-import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, QuestionRequest, ServerEntry, ListItem, RevertBannerMsg } from '../types'
-import { mapToolStatus, isAssistant, isRevertBanner } from '../types'
+import type { Message, AssistantMsg, UserMsg, ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, QuestionRequest, ServerEntry, ListItem, RevertBannerMsg, CompactionMsg } from '../types'
+import { mapToolStatus, isAssistant, isRevertBanner, isCompaction } from '../types'
 import { stripThinking } from '../utils/segmentParts'
 import { storageKey } from '../utils/storage'
 import { parseRevertDiff } from '../utils/revertDiff'
@@ -105,7 +105,10 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [cwd, setCwd] = useState('')
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [sessionBanner, setSessionBanner] = useState<{ text: string; bg?: string } | null>(null)
+  const setError = useCallback((msg: string | null) => {
+    setSessionBanner(msg ? { text: msg } : null)
+  }, [])
   const [retryCountdown, setRetryCountdown] = useState(0)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [currentModel, setCurrentModel] = useState<ModelKey | null>(null)
@@ -428,6 +431,23 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           if (evType === 'session.status' && props.status?.type === 'idle' && props.sessionID === sessionId) { setSending(false); setError(null); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
           if (evType === 'session.status' && props.status?.type === 'busy' && props.sessionID === sessionId) { setSending(true); continue }
           if (evType === 'session.status' && props.status?.type === 'retry' && props.sessionID === sessionId) { setSending(true); setError(`⚠️ ${props.status.message}`); continue }
+          if (evType === 'session.next.compaction.started' && props.sessionID === sessionId) { setError('正在压缩对话...'); continue }
+          if (evType === 'session.next.compaction.ended' && props.sessionID === sessionId) {
+            setError(null)
+            setMessages((prev) => {
+              const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
+              const compactionMsg: CompactionMsg = {
+                id: props.messageID || `compact-${Date.now()}`,
+                role: 'compaction',
+                reason: props.reason || 'auto',
+                summary: props.text || '',
+                recent: props.recent || '',
+              }
+              return [compactionMsg, ...filtered]
+            })
+            continue
+          }
+          if (evType === 'session.compacted' && props.sessionID === sessionId) { setError(null); continue }
           if (evType === 'session.error') {
             setSending(false)
             const isAbort = props.error?.name === 'MessageAbortedError'
@@ -838,15 +858,20 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           <View style={styles.headerRight} />
         </View>
 
-        {error && (
-          <View style={[styles.errorBar, { backgroundColor: error === '已重连' ? theme.success : theme.error }]}>
-            <Feather name={error === '已重连' ? 'check-circle' : 'refresh-cw'} size={14} color="rgba(255,255,255,0.8)" style={{ marginRight: 6 }} />
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity onPress={() => setError(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Feather name="x" size={16} color="rgba(255,255,255,0.8)" />
-            </TouchableOpacity>
-          </View>
-        )}
+        {sessionBanner && (() => {
+          const isReconnect = sessionBanner.text === '已重连'
+          const bg = sessionBanner.bg || (isReconnect ? theme.success : theme.error)
+          const icon = isReconnect ? 'check-circle' : 'refresh-cw'
+          return (
+            <View style={[styles.errorBar, { backgroundColor: bg }]}>
+              <Feather name={icon} size={14} color="rgba(255,255,255,0.8)" style={{ marginRight: 6 }} />
+              <Text style={styles.errorText}>{sessionBanner.text}</Text>
+              <TouchableOpacity onPress={() => setSessionBanner(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Feather name="x" size={16} color="rgba(255,255,255,0.8)" />
+              </TouchableOpacity>
+            </View>
+          )
+        })()}
 
         {pendingPermissions.length > 0 && (
           <View style={[styles.permissionBanner, { backgroundColor: theme.warning + '20', borderBottomColor: theme.warning + '40' }]}>
@@ -903,6 +928,17 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
               renderItem={({ item }: { item: ListItem }) => {
                 if (isRevertBanner(item)) {
                   return <RevertBanner banner={item} theme={theme} onUnrevert={handleUnrevert} />
+                }
+                if (isCompaction(item)) {
+                  return (
+                    <View style={[styles.compactionDivider, { borderColor: theme.border }]}>
+                      <View style={[styles.compactionBadge, { backgroundColor: theme.warning + '20' }]}>
+                        <Text style={[styles.compactionBadgeText, { color: theme.warning }]}>
+                          {item.reason === 'auto' ? '自动压缩' : '手动压缩'}
+                        </Text>
+                      </View>
+                    </View>
+                  )
                 }
                 return <MessageBubble message={item} theme={theme} onToolPress={handleToolPress} onRevert={item.role === 'user' ? () => handleRevert(item.id) : undefined} workspaceDir={cwd} />
               }}
@@ -1080,7 +1116,7 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
   statusDot: { width: 5, height: 5, borderRadius: 2.5, marginLeft: 4 },
   statusText: { fontSize: 11 },
-  headerRight: { width: 36 },
+headerRight: { width: 36 },
   errorBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 7 },
   errorText: { flex: 1, color: '#fff', fontSize: 13 },
   permissionBanner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 6, gap: 6, borderBottomWidth: 1 },
@@ -1097,6 +1133,9 @@ const styles = StyleSheet.create({
   suggestions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 },
   suggestionChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   suggestionText: { fontSize: 13 },
+  compactionDivider: { marginVertical: 8, borderTopWidth: 1, alignItems: 'center', paddingTop: 4 },
+  compactionBadge: { paddingHorizontal: 12, paddingVertical: 3, borderRadius: 10 },
+  compactionBadgeText: { fontSize: 11, fontWeight: '600' },
   scrollButton: { position: 'absolute', bottom: 80, right: 16, borderRadius: 20, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 4 },
   scrollButtonTouch: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   renameOverlay: { flex: 1 },
