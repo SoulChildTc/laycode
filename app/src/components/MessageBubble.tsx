@@ -4,6 +4,7 @@ import * as Clipboard from 'expo-clipboard'
 import ThinkingAccordion from './ThinkingAccordion'
 import ContentRenderer from './ContentRenderer'
 import ToolCallCapsule from './ToolCallCapsule'
+import FilePart from './FilePart'
 import ActionSheet from './ActionSheet'
 import type { Theme } from '../theme'
 import type { Message } from '../types'
@@ -81,7 +82,14 @@ export default function MessageBubble({ message, theme, onToolPress, onRevert, w
       <>
         <TouchableOpacity onLongPress={handleLongPress} activeOpacity={1} style={styles.userContainer}>
           <View style={[styles.userBubble, { backgroundColor: theme.userBubble }]}>
-            <Text style={[styles.userText, { color: theme.userBubbleText }]}>{message.text}</Text>
+            {message.files && message.files.length > 0 && (
+              <View style={styles.userFiles}>
+                {message.files.map((f, i) => (
+                  <FilePart key={i} file={f} theme={theme} />
+                ))}
+              </View>
+            )}
+            {!!message.text && <Text style={[styles.userText, { color: theme.userBubbleText }]}>{message.text}</Text>}
           </View>
           {copied && <Text style={[styles.copiedTip, { color: theme.textTertiary }]}>已复制 ✓</Text>}
         </TouchableOpacity>
@@ -119,6 +127,13 @@ export default function MessageBubble({ message, theme, onToolPress, onRevert, w
                 />
               ))}
             {!!content && <ContentRenderer content={content} theme={theme} />}
+            {message.files && message.files.length > 0 && (
+              <View style={styles.assistantFiles}>
+                {message.files.map((f, i) => (
+                  <FilePart key={i} file={f} theme={theme} />
+                ))}
+              </View>
+            )}
             {copied && <Text style={[styles.copiedTip, { color: theme.textTertiary }]}>已复制 ✓</Text>}
           </>
           </View>
@@ -132,10 +147,12 @@ export default function MessageBubble({ message, theme, onToolPress, onRevert, w
 const styles = StyleSheet.create({
   userContainer: { marginVertical: 6, flexDirection: 'row', justifyContent: 'flex-end' },
   userBubble: { maxWidth: '80%', borderRadius: 20, borderBottomRightRadius: 6, paddingHorizontal: 16, paddingVertical: 10 },
+  userFiles: { marginBottom: 4 },
   userText: { fontSize: 15, lineHeight: 22 },
   assistantContainer: { marginVertical: 6, flexDirection: 'row', justifyContent: 'flex-start' },
   assistantTouch: { flex: 1 },
   assistantBubble: { flex: 1, borderRadius: 20, borderBottomLeftRadius: 6, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10 },
+  assistantFiles: { marginTop: 4 },
   loadingBubble: { alignSelf: 'flex-start', borderRadius: 16, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 8 },
   dot: { fontSize: 20, lineHeight: 22 },
   copiedTip: { fontSize: 11, fontWeight: '500', marginTop: 2 },

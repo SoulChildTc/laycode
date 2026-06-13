@@ -40,6 +40,14 @@
             "hermesEnabled": true
           }
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "LayCode needs photo access so you can send images to the AI.",
+          "cameraPermission": "LayCode needs camera access so you can take photos and send them to the AI.",
+          "microphonePermission": false
+        }
       ]
     ],
     "extra": {
