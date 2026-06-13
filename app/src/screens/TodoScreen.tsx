@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import {
-  View, Text, FlatList, TextInput, TouchableOpacity,
-  StyleSheet, Modal, Animated,
+  View, Text, FlatList, TouchableOpacity,
+  StyleSheet, Animated,
   LayoutAnimation, UIManager, Platform,
 } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
@@ -11,6 +11,7 @@ import { Feather } from '@expo/vector-icons'
 import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient } from '../api/client'
 import { Todo } from '../types'
+import { InputModal, InputField, MetaRow } from '../components/InputModal'
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true)
@@ -47,7 +48,6 @@ export default function TodoScreen({ route, navigation, themeMode, client: api }
   const [loading, setLoading] = useState(true)
   const [editingTodo, setEditingTodo] = useState<Todo | 'new' | null>(null)
   const [editText, setEditText] = useState('')
-  const editInputRef = useRef<TextInput>(null)
   const openSwipeRef = useRef<Swipeable | null>(null)
   const toastAnim = useRef(new Animated.Value(0)).current
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -58,10 +58,6 @@ export default function TodoScreen({ route, navigation, themeMode, client: api }
   }, [api, directory])
 
   useEffect(() => { load() }, [load])
-
-  useEffect(() => {
-    if (editingTodo) setTimeout(() => editInputRef.current?.focus(), 200)
-  }, [editingTodo])
 
   const animCfg = { duration: 220, create: { type: 'easeInEaseOut' as const, property: 'opacity' as const }, update: { type: 'spring' as const, springDamping: 0.85 }, delete: { type: 'easeInEaseOut' as const, duration: 160 } }
 
@@ -165,7 +161,7 @@ export default function TodoScreen({ route, navigation, themeMode, client: api }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
-      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
         <View style={[s.header, { borderBottomColor: theme.border }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={10} style={s.backBtn}>
             <Feather name="chevron-left" size={22} color={theme.textSecondary} />
@@ -223,58 +219,31 @@ export default function TodoScreen({ route, navigation, themeMode, client: api }
         )}
       </SafeAreaView>
 
-      {editingTodo !== null && (
-        <Modal visible animationType="slide" onRequestClose={cancelEdit}>
-          <View style={[s.editScreen, { backgroundColor: theme.background }]}>
-            <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
-              <View style={[s.editHeader, { borderBottomColor: theme.border }]}>
-                <TouchableOpacity onPress={cancelEdit} hitSlop={10} style={s.editHeaderBtn}>
-                  <Feather name="x" size={22} color={theme.textSecondary} />
-                  <Text style={[s.editHeaderText, { color: theme.textSecondary }]}>取消</Text>
-                </TouchableOpacity>
-                <Text style={[s.editHeaderTitle, { color: theme.text }]}>
-                  {editingTodo === 'new' ? '新建任务' : '编辑任务'}
-                </Text>
-                <TouchableOpacity onPress={handleSave} hitSlop={10} style={s.editHeaderBtn}>
-                  <Text style={[s.editHeaderText, { color: theme.accent, fontWeight: '700' }]}>保存</Text>
-                  <Feather name="check" size={22} color={theme.accent} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={s.editBody}>
-                <TextInput
-                  ref={editInputRef}
-                  value={editText}
-                  onChangeText={setEditText}
-                  multiline
-                  textAlignVertical="top"
-                  placeholder="输入任务内容..."
-                  placeholderTextColor={theme.textTertiary}
-                  style={[s.editInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
-                />
-                {editingTodo !== 'new' && (
-                  <>
-                    <View style={s.editMeta}>
-                      <Feather name="clock" size={13} color={theme.textTertiary} />
-                      <Text style={[s.editMetaText, { color: theme.textTertiary }]}>
-                        创建于 {formatDate(editingTodo.createdAt)}
-                      </Text>
-                    </View>
-                    {editingTodo.updatedAt !== editingTodo.createdAt && (
-                      <View style={s.editMeta}>
-                        <Feather name="refresh-cw" size={13} color={theme.textTertiary} />
-                        <Text style={[s.editMetaText, { color: theme.textTertiary }]}>
-                          更新于 {formatDate(editingTodo.updatedAt)}
-                        </Text>
-                      </View>
-                    )}
-                  </>
-                )}
-              </View>
-            </SafeAreaView>
-          </View>
-        </Modal>
-      )}
+      <InputModal
+        visible={editingTodo !== null}
+        title={editingTodo === 'new' ? '新建任务' : '编辑任务'}
+        theme={theme}
+        onCancel={cancelEdit}
+        onSave={handleSave}
+        saveDisabled={!editText.trim()}
+      >
+        <InputField
+          value={editText}
+          onChangeText={setEditText}
+          placeholder="输入任务内容..."
+          theme={theme}
+          multiline
+          onSubmitEditing={handleSave}
+        />
+        {editingTodo !== null && editingTodo !== 'new' && (
+          <>
+            <MetaRow icon="clock" text={`创建于 ${formatDate(editingTodo.createdAt)}`} theme={theme} />
+            {editingTodo.updatedAt !== editingTodo.createdAt && (
+              <MetaRow icon="refresh-cw" text={`更新于 ${formatDate(editingTodo.updatedAt)}`} theme={theme} />
+            )}
+          </>
+        )}
+      </InputModal>
 
       <Animated.View
         pointerEvents="none"
@@ -350,28 +319,6 @@ const s = StyleSheet.create({
   emptyWrap: { alignItems: 'center', paddingTop: 80, gap: 8 },
   emptyTitle: { fontSize: 16, fontWeight: '600' },
   emptySub: { fontSize: 13 },
-  editScreen: { flex: 1 },
-  editHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  editHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  editHeaderText: { fontSize: 15 },
-  editHeaderTitle: { fontSize: 17, fontWeight: '700' },
-  editBody: { flex: 1, padding: 16 },
-  editInput: {
-    flex: 1,
-    fontSize: 16,
-    lineHeight: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 16,
-    textAlignVertical: 'top',
-    minHeight: 160,
-  },
-  editMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
-  editMetaText: { fontSize: 13 },
   toast: {
     position: 'absolute',
     bottom: 100,
