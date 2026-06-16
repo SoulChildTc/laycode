@@ -1,7 +1,7 @@
 import { createOpencodeClient as createV1Client } from '@opencode-ai/sdk/client'
 import { createOpencodeClient as createV2Client } from '@opencode-ai/sdk/v2/client'
 import type { Session } from '@opencode-ai/sdk'
-import type { ServerConfig, Provider, ModelInfo, Agent, PermissionRequest, QuestionRequest, Todo } from '../types'
+import type { ServerConfig, Provider, ModelInfo, Agent, PermissionRequest, QuestionRequest, Todo, GitStatus } from '../types'
 
 export interface BrowseEntry {
   name: string
@@ -352,5 +352,106 @@ export class LayCodeClient {
       headers: { Authorization: `Bearer ${this.token}` },
     })
     return res.ok
+  }
+
+  async gitStatus(directory: string): Promise<GitStatus> {
+    const params = `?directory=${encodeURIComponent(directory)}`
+    const res = await fetch(`${this.baseUrl}/api/v1/git/status${params}`, {
+      headers: { Authorization: `Bearer ${this.token}` },
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || 'Git status failed')
+    }
+    return res.json()
+  }
+
+  async gitInit(directory: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/api/v1/git/init`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({ directory }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || 'Git init failed')
+    }
+  }
+
+  async gitDiff(directory: string, file: string, cached?: boolean): Promise<string> {
+    const params = new URLSearchParams({ directory, file })
+    if (cached) params.set('cached', '1')
+    const res = await fetch(`${this.baseUrl}/api/v1/git/diff?${params}`, {
+      headers: { Authorization: `Bearer ${this.token}` },
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || 'Git diff failed')
+    }
+    const data = await res.json()
+    return data.diff || ''
+  }
+
+  async gitStage(directory: string, file?: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/api/v1/git/stage`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({ directory, file }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || 'Git stage failed')
+    }
+  }
+
+  async gitUnstage(directory: string, file?: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/api/v1/git/unstage`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({ directory, file }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || 'Git unstage failed')
+    }
+  }
+
+  async gitCommit(directory: string, message: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/api/v1/git/commit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({ directory, message }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || 'Git commit failed')
+    }
+  }
+
+  async gitDiscard(directory: string, file?: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/api/v1/git/discard`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({ directory, file }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || 'Git discard failed')
+    }
   }
 }

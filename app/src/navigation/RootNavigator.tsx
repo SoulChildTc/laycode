@@ -11,6 +11,8 @@ import SessionScreen from '../screens/SessionScreen'
 import FileExplorerScreen from '../screens/FileExplorerScreen'
 import SettingsScreen from '../screens/SettingsScreen'
 import TodoSummaryScreen from '../screens/TodoSummaryScreen'
+import GitScreen from '../screens/GitScreen'
+import DiffScreen from '../screens/DiffScreen'
 import { LayCodeClient } from '../api/client'
 import { ThemeMode, getTheme } from '../theme'
 import { ServerEntry } from '../types'
@@ -21,6 +23,8 @@ export type RootStackParamList = {
   BrowseWorkspace: undefined
   Workspace: { directory: string; name: string }
   Session: { projectId: string; sessionId: string }
+  Git: { directory: string }
+  Diff: { directory: string; file: string; cached?: boolean }
 }
 
 export type TabParamList = {
@@ -113,6 +117,12 @@ export default function RootNavigator({ screenProps }: { screenProps: ScreenProp
         </Stack.Screen>
         <Stack.Screen name="Session">
           {(props) => <SessionScreen {...props} themeMode={themeMode} client={client!} config={config!} />}
+        </Stack.Screen>
+        <Stack.Screen name="Git">
+          {(props) => <GitScreen {...props} themeMode={themeMode} client={client!} />}
+        </Stack.Screen>
+        <Stack.Screen name="Diff">
+          {(props) => <DiffScreen {...props} themeMode={themeMode} client={client!} />}
         </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>

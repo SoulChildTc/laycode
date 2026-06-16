@@ -200,3 +200,14 @@ export interface Todo {
   createdAt: number
   updatedAt: number
 }
+
+export interface GitStatusItem {
+  path: string
+  status: string
+}
+
+export interface GitStatus {
+  staged: GitStatusItem[]
+  unstaged: GitStatusItem[]
+  notRepo?: boolean
+}

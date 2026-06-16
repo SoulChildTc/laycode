@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform, Animated, Modal, KeyboardAvoidingView, AppState, AppStateStatus } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform, Animated, Modal, KeyboardAvoidingView, AppState, AppStateStatus, PanResponder } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -13,6 +13,7 @@ import QuestionPrompt from '../components/QuestionPrompt'
 import ModelSelectorModal from '../components/ModelSelectorModal'
 import AgentSelectorModal from '../components/AgentSelectorModal'
 import RevertBanner from '../components/RevertBanner'
+import FabMenu from '../components/FabMenu'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import { useAgents } from '../hooks/useAgents'
 import type { Message, AssistantMsg, ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, QuestionRequest, ServerEntry, ListItem, RevertBannerMsg, CompactionMsg, FileAttachment } from '../types'
@@ -138,6 +139,12 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [parentID, setParentID] = useState<string | null>(route.params?.parentId || null)
   const [childSessions, setChildSessions] = useState<{ id: string; title: string; agent: string }[]>([])
   const [showChildSessions, setShowChildSessions] = useState(false)
+  const [fabMenuVisible, setFabMenuVisible] = useState(false)
+  const fabPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current
+  const fabDrag = useRef({ x: 0, y: 0 })
+  const fabMoved = useRef(false)
+  const fabRotate = useRef(new Animated.Value(0)).current
+  const fabPositionKey = storageKey(config.id, 'fab-position')
   const flatListRef = useRef<FlatList>(null)
   const xhrRef = useRef<XMLHttpRequest | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -149,6 +156,57 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const { keyboardOffset, isKeyboardOpen } = useKeyboardHeight()
   const sessionModelKey = storageKey(config.id, 'session-models')
   const { agents: availableAgents, currentAgent, setAgent: setCurrentAgent } = useAgents(agentsFromParent, sessionId, defaultAgent, config.id)
+
+  useEffect(() => {
+    AsyncStorage.getItem(fabPositionKey).then((raw) => {
+      if (!raw) return
+      try {
+        const pos = JSON.parse(raw)
+        fabDrag.current = pos
+        fabPan.setOffset(pos)
+        fabPan.setValue({ x: 0, y: 0 })
+      } catch {}
+    }).catch(() => {})
+  }, [])
+
+  const saveFabPosition = useCallback(async (pos: { x: number; y: number }) => {
+    try { await AsyncStorage.setItem(fabPositionKey, JSON.stringify(pos)) } catch {}
+  }, [fabPositionKey])
+
+  const fabPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        fabMoved.current = false
+        fabPan.setOffset({ x: fabDrag.current.x, y: fabDrag.current.y })
+        fabPan.setValue({ x: 0, y: 0 })
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5) {
+          fabMoved.current = true
+        }
+        fabPan.setValue({ x: gestureState.dx, y: gestureState.dy })
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        fabPan.flattenOffset()
+        fabDrag.current = { x: fabDrag.current.x + gestureState.dx, y: fabDrag.current.y + gestureState.dy }
+        saveFabPosition(fabDrag.current)
+        if (!fabMoved.current) {
+          setFabMenuVisible((v) => !v)
+        }
+      },
+    })
+  ).current
+
+  useEffect(() => {
+    Animated.spring(fabRotate, {
+      toValue: fabMenuVisible ? 1 : 0,
+      useNativeDriver: true,
+      damping: 12,
+      stiffness: 200,
+    }).start()
+  }, [fabMenuVisible])
 
   const handlePermissionReply = useCallback(async (reply: PermissionReply, message?: string) => {
     const req = pendingPermissions[0]
@@ -1108,6 +1166,15 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             </TouchableOpacity>
           </Animated.View>
         )}
+
+        {cwd && (
+          <Animated.View style={[styles.fabContainer, { transform: fabPan.getTranslateTransform() }]} {...fabPanResponder.panHandlers}>
+            <FabMenu visible={fabMenuVisible} theme={theme} onToolPress={(tool) => { setFabMenuVisible(false); navigation.push('Git', { directory: cwd }) }} />
+            <Animated.View style={[styles.fab, { backgroundColor: theme.accent, transform: [{ rotate: fabRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] }) }] }]}>
+              <Feather name="tool" size={22} color="#fff" />
+            </Animated.View>
+          </Animated.View>
+        )}
       </View>
 
       <ModelSelectorModal
@@ -1255,4 +1322,6 @@ headerRight: { width: 36 },
   childSessionContent: { flex: 1, gap: 2 },
   childSessionAgent: { fontSize: 15, fontWeight: '500' },
   childSessionText: { fontSize: 13 },
+  fabContainer: { position: 'absolute', bottom: 24, right: 16, alignItems: 'flex-end', zIndex: 100 },
+  fab: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 6 },
 })
