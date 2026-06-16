@@ -99,6 +99,20 @@ export class LayCodeClient {
     return (res.data as any) || []
   }
 
+  async getMessagesPage(sessionId: string, limit: number, before?: string, directory?: string): Promise<{ messages: any[]; nextCursor: string | null }> {
+    try {
+      let url = `${this.baseUrl}/opencode-api/session/${sessionId}/message?limit=${limit}`
+      if (before) url += `&before=${encodeURIComponent(before)}`
+      if (directory) url += `&directory=${encodeURIComponent(directory)}`
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${this.token}` } })
+      const messages = await res.json()
+      const nextCursor = res.headers.get('X-Next-Cursor') || null
+      return { messages: messages || [], nextCursor }
+    } catch {
+      return { messages: [], nextCursor: null }
+    }
+  }
+
   async getAgents(directory?: string): Promise<Agent[]> {
     try {
       const res = await this.v2.app.agents({ directory })
