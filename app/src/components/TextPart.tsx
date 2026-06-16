@@ -1,7 +1,116 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useWindowDimensions, TextStyle, ViewStyle, Modal, SafeAreaView, TouchableOpacity, ScrollView, View, StyleSheet, Text } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import Markdown from 'react-native-markdown-display'
+
+const SELECTABLE_RULES: Record<string, any> = {
+  body: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.body} selectable>
+      {children}
+    </Text>
+  ),
+  paragraph: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.paragraph}>
+      {children}
+    </Text>
+  ),
+  text: (node: any, children: any, parent: any, styles: any, inheritedStyles: any = {}) => (
+    <Text key={node.key} style={[inheritedStyles, styles.text]}>
+      {node.content}
+    </Text>
+  ),
+  textgroup: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.textgroup}>
+      {children}
+    </Text>
+  ),
+  code_inline: (node: any, children: any, parent: any, styles: any, inheritedStyles: any = {}) => (
+    <Text key={node.key} style={[inheritedStyles, styles.code_inline]}>
+      {node.content}
+    </Text>
+  ),
+  heading1: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.heading1}>
+      {children}
+    </Text>
+  ),
+  heading2: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.heading2}>
+      {children}
+    </Text>
+  ),
+  heading3: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.heading3}>
+      {children}
+    </Text>
+  ),
+  heading4: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.heading4}>
+      {children}
+    </Text>
+  ),
+  heading5: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.heading5}>
+      {children}
+    </Text>
+  ),
+  heading6: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.heading6}>
+      {children}
+    </Text>
+  ),
+  list_item: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.list_item}>
+      {children}
+    </Text>
+  ),
+  link: (node: any, children: any, parent: any, styles: any, inheritedStyles: any = {}) => (
+    <Text key={node.key} style={[inheritedStyles, styles.link]}>
+      {children}
+    </Text>
+  ),
+  blockquote: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.blockquote}>
+      {children}
+    </Text>
+  ),
+  bullet_list: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.bullet_list}>
+      {children}
+    </Text>
+  ),
+  ordered_list: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.ordered_list}>
+      {children}
+    </Text>
+  ),
+  hr: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.hr}>
+      {'\n———————————\n'}
+    </Text>
+  ),
+  table: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.table}>
+      {children}
+    </Text>
+  ),
+  thead: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.thead}>
+      {children}
+    </Text>
+  ),
+  tbody: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.tbody}>
+      {children}
+    </Text>
+  ),
+  tr: (node: any, children: any, parent: any, styles: any) => (
+    <Text key={node.key} style={styles.tr}>
+      {children}
+    </Text>
+  ),
+}
+
 
 interface Props {
   text: string
@@ -15,9 +124,9 @@ export default function TextPart({ text, theme, isUser }: Props) {
   const [fullscreen, setFullscreen] = useState(false)
 
   const style: Record<string, TextStyle | ViewStyle> = {
-    body: { color: isUser ? '#fff' : theme.text, fontSize: 15, lineHeight: 24 },
+    body: { color: isUser ? '#fff' : theme.text, fontSize: 15, lineHeight: 26 },
     code_inline: {
-      backgroundColor: isUser ? 'rgba(255,255,255,0.15)' : theme.surfaceSecondary,
+      backgroundColor: isUser ? 'rgba(255,255,255,0.15)' : theme.surfaceSecondary + '70',
       color: isUser ? '#fff' : theme.accent,
       fontSize: 13,
       paddingHorizontal: 5,
@@ -63,7 +172,7 @@ export default function TextPart({ text, theme, isUser }: Props) {
   return (
     <>
       <TouchableOpacity onLongPress={() => setFullscreen(true)} activeOpacity={0.9}>
-        <Markdown style={style}>{text}</Markdown>
+        <Markdown style={style} rules={SELECTABLE_RULES}>{text}</Markdown>
       </TouchableOpacity>
       <Modal visible={fullscreen} animationType="slide" onRequestClose={() => setFullscreen(false)}>
         <SafeAreaView style={[styles.modalContainer, { backgroundColor: theme.background }]}>
@@ -74,7 +183,7 @@ export default function TextPart({ text, theme, isUser }: Props) {
             </TouchableOpacity>
           </View>
           <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
-            <Markdown style={fullscreenStyle}>{text}</Markdown>
+            <Markdown style={fullscreenStyle} rules={SELECTABLE_RULES}>{text}</Markdown>
           </ScrollView>
         </SafeAreaView>
       </Modal>

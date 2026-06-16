@@ -89,7 +89,7 @@ export default function MessageBubble({ message, theme, onToolPress, onRevert, w
                 ))}
               </View>
             )}
-            {!!message.text && <Text style={[styles.userText, { color: theme.userBubbleText }]}>{message.text}</Text>}
+            {!!message.text && <Text selectable style={[styles.userText, { color: theme.userBubbleText }]}>{message.text}</Text>}
           </View>
           {copied && <Text style={[styles.copiedTip, { color: theme.textTertiary }]}>已复制 ✓</Text>}
         </TouchableOpacity>
