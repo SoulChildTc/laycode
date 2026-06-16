@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform, Animated, Modal, KeyboardAvoidingView, AppState, AppStateStatus, PanResponder } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform, Animated, Modal, KeyboardAvoidingView, AppState, AppStateStatus, PanResponder, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -107,6 +107,7 @@ interface Props {
 }
 
 const GREETINGS = ['有什么我可以帮你的？', '开始一段新的对话吧']
+const PAGE_SIZE = 10
 
 export default function SessionScreen({ route, navigation, themeMode, client, config }: Props) {
   const { sessionId, title: routeTitle, agents: agentsJson, defaultAgent, agent: routeAgent } = route.params || {}
@@ -139,6 +140,9 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [parentID, setParentID] = useState<string | null>(route.params?.parentId || null)
   const [childSessions, setChildSessions] = useState<{ id: string; title: string; agent: string }[]>([])
   const [showChildSessions, setShowChildSessions] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const cursorRef = useRef<string | null>(null)
+  const initialLoadDoneRef = useRef(false)
   const [fabMenuVisible, setFabMenuVisible] = useState(false)
   const fabPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current
   const fabDrag = useRef({ x: 0, y: 0 })
@@ -248,11 +252,13 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     if (!sessionId) return
 
     try {
-      const [sessionData, raw, providersRes] = await Promise.all([
+      const [sessionData, pageResult, providersRes] = await Promise.all([
         client.getSession(sessionId).catch(() => null),
-        client.getMessages(sessionId).catch(() => [] as any[]),
+        client.getMessagesPage(sessionId, PAGE_SIZE).catch(() => ({ messages: [], nextCursor: null })),
         client.getProviders().catch(() => null),
       ])
+      const raw = pageResult.messages
+      cursorRef.current = pageResult.nextCursor
 
       // Session metadata
       if (sessionData?.info?.title) setSessionTitle(sessionData.info.title)
@@ -346,8 +352,26 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       }
     } catch (e: any) {
       setError(`加载失败: ${e.message}`)
+    } finally {
+      initialLoadDoneRef.current = true
     }
   }
+
+  const handleLoadMore = useCallback(async () => {
+    if (!cursorRef.current || loadingMore || !initialLoadDoneRef.current || !sessionId) return
+    setLoadingMore(true)
+    try {
+      const { messages: raw, nextCursor } = await client.getMessagesPage(sessionId, PAGE_SIZE, cursorRef.current, cwd || undefined)
+      cursorRef.current = nextCursor
+      if (raw.length > 0) {
+        const older = parseMessages(raw)
+        setMessages((prev) => [...prev, ...older])
+      }
+    } catch {
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [loadingMore, sessionId, client, cwd])
 
   useEffect(() => {
     if (sessionId) reloadSession()
@@ -1094,6 +1118,9 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
               }}
               style={styles.list}
               contentContainerStyle={styles.listContent}
+              onEndReached={handleLoadMore}
+              onEndReachedThreshold={0.3}
+              ListFooterComponent={loadingMore ? <View style={styles.loadingMore}><ActivityIndicator size="small" color={theme.accent} /></View> : null}
               onScroll={handleScroll}
               scrollEventThrottle={16}
               onContentSizeChange={() => {
@@ -1324,4 +1351,5 @@ headerRight: { width: 36 },
   childSessionText: { fontSize: 13 },
   fabContainer: { position: 'absolute', bottom: 24, right: 16, alignItems: 'flex-end', zIndex: 100 },
   fab: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 6 },
+  loadingMore: { paddingVertical: 16, alignItems: 'center' },
 })
