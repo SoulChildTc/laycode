@@ -233,7 +233,7 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
                 <Feather name="x-circle" size={18} color={theme.error} />
                 <Text style={[styles.sheetTitle, { color: theme.text }]}>Reject permission</Text>
               </View>
-              <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 160 }}>
+              <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 260 }}>
                 <View style={[styles.rejectInputWrap, { backgroundColor: theme.codeBg, borderColor: theme.borderLight }]}>
                   <TextInput
                     ref={rejectInputRef}
@@ -246,24 +246,24 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
                     returnKeyType="default"
                   />
                 </View>
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
+                    onPress={handleRejectCancel}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.actionBtnPrimary, { backgroundColor: theme.error }]}
+                    onPress={handleRejectConfirm}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="x" size={14} color="#fff" />
+                    <Text style={[styles.actionBtnText, styles.actionBtnPrimaryText]}>Reject</Text>
+                  </TouchableOpacity>
+                </View>
               </ScrollView>
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
-                  onPress={handleRejectCancel}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.actionBtnPrimary, { backgroundColor: theme.error }]}
-                  onPress={handleRejectConfirm}
-                  activeOpacity={0.7}
-                >
-                  <Feather name="x" size={14} color="#fff" />
-                  <Text style={[styles.actionBtnText, styles.actionBtnPrimaryText]}>Reject</Text>
-                </TouchableOpacity>
-              </View>
             </>
           )}
         </Animated.View>

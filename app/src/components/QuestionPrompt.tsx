@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback,
   StyleSheet, Animated, Modal, Platform, ScrollView, Keyboard,
+  KeyboardAvoidingView,
 } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import type { Theme } from '../theme'
@@ -20,7 +21,6 @@ export default function QuestionPrompt({ request, theme, onReply, onReject }: Pr
   const [currentIdx, setCurrentIdx] = useState(0)
   const [selections, setSelections] = useState<string[][]>(() => request.questions.map(() => []))
   const [customInputs, setCustomInputs] = useState<string[]>(() => request.questions.map(() => ''))
-  const [keyboardPad, setKeyboardPad] = useState(0)
   const slideAnim = useRef(new Animated.Value(0)).current
   const customInputRef = useRef<TextInput>(null)
   const scrollRef = useRef<ScrollView>(null)
@@ -46,16 +46,6 @@ export default function QuestionPrompt({ request, theme, onReply, onReject }: Pr
       customInputRef.current?.focus()
     }
   }, [isCustomSelected])
-
-  useEffect(() => {
-    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
-      setKeyboardPad(e.endCoordinates.height)
-    })
-    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => {
-      setKeyboardPad(0)
-    })
-    return () => { show.remove(); hide.remove() }
-  }, [])
 
   const toggleOption = (label: string) => {
     if (label === CUSTOM_KEY) {
@@ -131,11 +121,12 @@ export default function QuestionPrompt({ request, theme, onReply, onReject }: Pr
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={onReject}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={styles.overlay}>
         <TouchableWithoutFeedback onPress={dismissKeyboard}>
           <View style={styles.overlayTouchable} />
         </TouchableWithoutFeedback>
-        <Animated.View style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.border, paddingBottom: keyboardPad + (Platform.OS === 'ios' ? 36 : 20) }, slideIn]}>
+        <Animated.View style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.border }, slideIn]}>
           <View style={styles.sheetHeader}>
             <View style={[styles.iconCircle, { backgroundColor: theme.accent + '20' }]}>
               <Feather name="help-circle" size={18} color={theme.accent} />
@@ -158,6 +149,7 @@ export default function QuestionPrompt({ request, theme, onReply, onReject }: Pr
             ref={scrollRef}
             style={styles.optionsScroll}
             contentContainerStyle={styles.optionsContent}
+            keyboardShouldPersistTaps="handled"
             onContentSizeChange={() => {
               if (isCustomSelected) {
                 scrollRef.current?.scrollTo({ y: 9999, animated: true })
@@ -235,35 +227,36 @@ export default function QuestionPrompt({ request, theme, onReply, onReject }: Pr
                 />
               </View>
             )}
-          </ScrollView>
 
-          <View style={styles.buttonRow}>
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
-              onPress={onReject}
-              activeOpacity={0.7}
-            >
-              <Feather name="x" size={14} color={theme.textSecondary} />
-              <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Skip</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.actionBtn,
-                styles.actionBtnPrimary,
-                { backgroundColor: canProceed ? theme.accent : theme.surfaceSecondary, opacity: canProceed ? 1 : 0.5 },
-              ]}
-              onPress={handleNext}
-              disabled={!canProceed}
-              activeOpacity={0.7}
-            >
-              <Feather name="check" size={14} color="#fff" />
-              <Text style={[styles.actionBtnText, styles.actionBtnPrimaryText]}>
-                {isLast ? 'Submit' : 'Next'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
+                onPress={onReject}
+                activeOpacity={0.7}
+              >
+                <Feather name="x" size={14} color={theme.textSecondary} />
+                <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Skip</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.actionBtn,
+                  styles.actionBtnPrimary,
+                  { backgroundColor: canProceed ? theme.accent : theme.surfaceSecondary, opacity: canProceed ? 1 : 0.5 },
+                ]}
+                onPress={handleNext}
+                disabled={!canProceed}
+                activeOpacity={0.7}
+              >
+                <Feather name="check" size={14} color="#fff" />
+                <Text style={[styles.actionBtnText, styles.actionBtnPrimaryText]}>
+                  {isLast ? 'Submit' : 'Next'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </Animated.View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
