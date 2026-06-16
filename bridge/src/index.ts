@@ -11,6 +11,7 @@ import { startMdns, stopMdns } from './mdns.js'
 import { startWebSocketServer, stopWebSocketServer } from './ws.js'
 import { ensureOpencode, stopOpencode, restartOpencode } from './opencode.js'
 import { readTodos, addTodo, updateTodo, deleteTodo } from './todos.js'
+import { getStatus, initRepo, getDiff, stageFile, unstageFile, commit, discardFile } from './git.js'
 
 const config = parseArgs()
 const app = express()
@@ -90,6 +91,84 @@ app.delete('/api/v1/todos/:id', requireAuth, (req, res) => {
   const ok = deleteTodo(directory, id)
   if (!ok) return res.status(404).json({ error: 'not found' })
   res.json({ ok: true })
+})
+
+// Git API (auth-protected)
+app.get('/api/v1/git/status', requireAuth, (req, res) => {
+  const directory = getDirectory(req)
+  if (!directory) return res.status(400).json({ error: 'directory required' })
+  try {
+    const status = getStatus(directory)
+    res.json(status)
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/v1/git/init', requireAuth, (req, res) => {
+  const { directory } = req.body
+  if (!directory) return res.status(400).json({ error: 'directory required' })
+  try {
+    initRepo(directory)
+    res.json({ ok: true })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.get('/api/v1/git/diff', requireAuth, (req, res) => {
+  const { directory, file, cached } = req.query as Record<string, string>
+  if (!directory || !file) return res.status(400).json({ error: 'directory and file required' })
+  try {
+    const diff = getDiff(directory, file, !!cached)
+    res.json({ diff })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/v1/git/stage', requireAuth, (req, res) => {
+  const { directory, file } = req.body
+  if (!directory) return res.status(400).json({ error: 'directory required' })
+  try {
+    stageFile(directory, file)
+    res.json({ ok: true })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/v1/git/unstage', requireAuth, (req, res) => {
+  const { directory, file } = req.body
+  if (!directory) return res.status(400).json({ error: 'directory required' })
+  try {
+    unstageFile(directory, file)
+    res.json({ ok: true })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/v1/git/commit', requireAuth, (req, res) => {
+  const { directory, message } = req.body
+  if (!directory || !message) return res.status(400).json({ error: 'directory and message required' })
+  try {
+    commit(directory, message)
+    res.json({ ok: true })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/v1/git/discard', requireAuth, (req, res) => {
+  const { directory, file } = req.body
+  if (!directory) return res.status(400).json({ error: 'directory required' })
+  try {
+    discardFile(directory, file)
+    res.json({ ok: true })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
 // Proxy — catch all methods on /opencode-api/* (Express 5 compatible)
