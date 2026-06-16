@@ -16,16 +16,28 @@ interface Props {
   config: ServerEntry
 }
 
+function pathSegments(fullPath: string): { label: string; path: string }[] {
+  if (!fullPath || fullPath === '/') return [{ label: '/', path: '/' }]
+  const parts = fullPath.split('/').filter(Boolean)
+  const segments: { label: string; path: string }[] = []
+  let accumulated = ''
+  for (const part of parts) {
+    accumulated += '/' + part
+    segments.push({ label: part, path: accumulated })
+  }
+  return segments
+}
+
 export default function BrowseWorkspaceScreen({ navigation, client, themeMode, config }: Props) {
   const theme = getTheme(themeMode)
   const key = storageKey(config.id, 'workspaces')
   const [current, setCurrent] = useState('')
-  const [parent, setParent] = useState('')
   const [entries, setEntries] = useState<BrowseEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [showNewFolder, setShowNewFolder] = useState(false)
   const [folderName, setFolderName] = useState('')
   const [creating, setCreating] = useState(false)
+  const breadcrumbs = pathSegments(current)
 
   const load = async (filePath?: string) => {
     setLoading(true)
@@ -33,7 +45,6 @@ export default function BrowseWorkspaceScreen({ navigation, client, themeMode, c
       const result = await client.browse(filePath)
       setEntries(result.entries)
       setCurrent(result.current)
-      setParent(result.parent)
     } catch {}
     setLoading(false)
   }
@@ -68,36 +79,76 @@ export default function BrowseWorkspaceScreen({ navigation, client, themeMode, c
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={[styles.cancel, { color: theme.accent }]}>取消</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
+          <Feather name="x" size={22} color={theme.textSecondary} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>选择项目目录</Text>
-        <TouchableOpacity onPress={() => setShowNewFolder(true)} style={styles.newBtn} hitSlop={8}>
-          <Feather name="plus" size={18} color={theme.accent} />
+        <TouchableOpacity onPress={() => setShowNewFolder(true)} style={styles.headerBtn}>
+          <Feather name="folder-plus" size={20} color={theme.accent} />
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={[styles.pathBar, { backgroundColor: theme.surface }]} onPress={() => load(parent)}>
-        <Text style={[styles.pathText, { color: theme.textSecondary }]} numberOfLines={1}>📂 {current}</Text>
-      </TouchableOpacity>
+      <View style={[styles.breadcrumb, { borderBottomColor: theme.border }]}>
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={breadcrumbs}
+          keyExtractor={(item) => item.path}
+          contentContainerStyle={styles.breadcrumbContent}
+          renderItem={({ item, index }) => (
+            <View style={styles.breadcrumbItem}>
+              {index > 0 && <Feather name="chevron-right" size={12} color={theme.textTertiary} style={{ marginHorizontal: 4 }} />}
+              <TouchableOpacity onPress={() => load(item.path)}>
+                <Text
+                  style={[
+                    styles.breadcrumbText,
+                    { color: index === breadcrumbs.length - 1 ? theme.text : theme.accent },
+                    index === breadcrumbs.length - 1 && styles.breadcrumbActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        />
+      </View>
 
       {loading ? (
-        <ActivityIndicator color={theme.accent} style={{ marginTop: 40 }} />
+        <ActivityIndicator color={theme.accent} style={{ marginTop: 60 }} />
       ) : (
         <FlatList
           data={entries}
           keyExtractor={(item) => item.path}
+          contentContainerStyle={{ paddingTop: 4, paddingBottom: 24 }}
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={[styles.entry, { borderBottomColor: theme.border }]}
+              style={[styles.entry, { borderBottomColor: theme.borderLight }]}
               onPress={() => load(item.path)}
+              activeOpacity={0.6}
             >
-              <Text style={[styles.entryName, { color: theme.text }]}>📁 {item.name}</Text>
-              <TouchableOpacity onPress={() => select(item.path)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Text style={[styles.selectBtn, { color: theme.accent }]}>选择</Text>
+              <View style={[styles.entryIcon, { backgroundColor: theme.accent + '18' }]}>
+                <Feather name="folder" size={20} color={theme.accent} />
+              </View>
+              <View style={styles.entryInfo}>
+                <Text style={[styles.entryName, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
+                <Text style={[styles.entryPath, { color: theme.textTertiary }]} numberOfLines={1}>{item.path}</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.selectBtn, { backgroundColor: theme.accent }]}
+                onPress={() => select(item.path)}
+              >
+                <Text style={styles.selectBtnText}>选择</Text>
               </TouchableOpacity>
             </TouchableOpacity>
           )}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Feather name="folder" size={48} color={theme.textTertiary} />
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>此目录为空</Text>
+            </View>
+          }
         />
       )}
 
@@ -131,23 +182,74 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 12,
-    borderBottomWidth: 1,
+    borderBottomWidth: 0.5,
   },
-  cancel: { fontSize: 16 },
-  headerTitle: { fontSize: 17, fontWeight: '600' },
-  newBtn: { width: 32, alignItems: 'flex-end' },
-  pathBar: { paddingHorizontal: 16, paddingVertical: 12 },
-  pathText: { fontSize: 13 },
+  headerBtn: { width: 36, alignItems: 'center' },
+  headerTitle: { fontSize: 17, fontWeight: '700' },
+  breadcrumb: {
+    borderBottomWidth: 0.5,
+    paddingVertical: 8,
+  },
+  breadcrumbContent: {
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  breadcrumbItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  breadcrumbText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  breadcrumbActive: {
+    fontWeight: '700',
+  },
   entry: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderBottomWidth: 0.5,
   },
-  entryName: { fontSize: 16 },
-  selectBtn: { fontSize: 14, fontWeight: '500' },
+  entryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  entryInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  entryName: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  entryPath: {
+    fontSize: 11,
+  },
+  selectBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  selectBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  empty: {
+    alignItems: 'center',
+    paddingTop: 80,
+    gap: 12,
+  },
+  emptyText: {
+    fontSize: 15,
+  },
 })
