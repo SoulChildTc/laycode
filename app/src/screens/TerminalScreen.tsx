@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, LayoutChangeEvent, ActivityIndicator, Platform } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -113,7 +113,7 @@ export default function TerminalScreen({ navigation, route, themeMode, client, c
           isWeb ? (
             <TerminalViewWeb wsUrl={wsUrl} ticket={ticket} directory={directory} ptyID={ptyID} resizePty={resizePty} setExited={setExited} onError={setWsError} />
           ) : (
-            <TerminalViewNative wsUrl={wsUrl} ticket={ticket} directory={directory} ptyID={ptyID} resizePty={resizePty} setExited={setExited} onError={setWsError} />
+            <TerminalViewNative wsUrl={wsUrl} ticket={ticket} directory={directory} ptyID={ptyID} resizePty={resizePty} setExited={setExited} onError={setWsError} bridgeHost={host} bridgePort={port} />
           )
         )}
       </View>
@@ -138,16 +138,27 @@ function terminalKeystroke(data: string) {
   if (terminalPaste) terminalPaste(data)
 }
 
-function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resizePty, setExited, onError }: any) {
+function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resizePty, setExited, onError, bridgeHost, bridgePort }: any) {
   var ref = useRef<any>(null)
-  var html = buildTerminalHtml(wsUrl, ticket, directory)
   var WebView = require('react-native-webview').WebView
+  var baseUrl = 'http://' + bridgeHost + ':' + bridgePort + '/static'
+  var [ready, setReady] = useState(false)
+
+  useEffect(function() {
+    setReady(true)
+  }, [])
 
   useEffect(function() {
     terminalPaste = function(data: string) {
       ref.current?.injectJavaScript("try{window.__t&&window.__t.paste(" + JSON.stringify(data) + ")}catch(e){};true")
     }
   }, [])
+
+  var html = useMemo(function() {
+    if (!ready || !wsUrl || !ticket) return '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"></head><body style="background:#0f0f1a"></body></html>'
+    var dirParam = directory ? '&directory=' + encodeURIComponent(directory) : ''
+    return '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>body{margin:0;padding:0;background:#0f0f1a;overflow:hidden}#t{width:100vw;height:100vh}.xterm-helper-textarea{position:absolute!important;left:-9999px!important;top:0!important;opacity:0!important;width:1px!important;height:1px!important;z-index:-1!important}</style></head><body><div id="t"></div><div id="l" style="display:flex;position:fixed;top:0;left:0;width:100%;height:100%;align-items:center;justify-content:center;color:#5c5c7a;font-family:monospace;font-size:13px;z-index:5">Loading terminal...</div><script src="' + baseUrl + '/xterm.js"></script><script src="' + baseUrl + '/xterm-addon-fit.js"></script><script>var l=document.getElementById("l");l.style.display="none";try{var t=new Terminal({cursorBlink:true,cursorStyle:"bar",fontSize:14,fontFamily:"Menlo, Monaco, Courier New, monospace",theme:{background:"#0f0f1a",foreground:"#e8e8f0",cursor:"#e8e8f0",selectionBackground:"#6c7dff44"},cols:80,rows:24});var a=new FitAddon.FitAddon();t.loadAddon(a);t.open(document.getElementById("t"));setTimeout(function(){try{a.fit()}catch(e){}},500);window.__t=t;var url="' + wsUrl + '?ticket=' + ticket + '&cursor=-1' + dirParam + '";var ws=new WebSocket(url);ws.onopen=function(){t.focus()};ws.onmessage=function(e){if(e.data instanceof Blob){e.data.arrayBuffer().then(function(b){var u8=new Uint8Array(b);if(u8[0]===0)return;t.write(new Uint8Array(b))});return}t.write(e.data)};ws.onclose=function(e){window.ReactNativeWebView.postMessage(JSON.stringify({type:"ws-close",code:e.code}))};ws.onerror=function(){window.ReactNativeWebView.postMessage(JSON.stringify({type:"ws-error"}))};t.onData(function(d){if(ws.readyState===WebSocket.OPEN)ws.send(d)});window.addEventListener("resize",function(){try{a.fit()}catch(e){}})}catch(e){window.ReactNativeWebView.postMessage(JSON.stringify({type:"log",message:"init error: "+e.message}))}</script></body></html>'
+  }, [ready, wsUrl, ticket, directory, baseUrl])
 
   var handleMessage = useCallback(function(event: any) {
     try {
@@ -166,6 +177,12 @@ function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resizePty, setExi
       ref.current?.injectJavaScript("try{window.__t&&__t.resize(" + cols + "," + rows + ")}catch(e){};true")
     }
   }, [resizePty])
+
+  if (!ready || !wsUrl || !ticket) {
+    return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f0f1a' }}>
+      <Text style={{ color: '#5c5c7a', fontFamily: 'monospace', fontSize: 13 }}>Loading terminal...</Text>
+    </View>
+  }
 
   return (
     <View style={{ flex: 1 }} onLayout={handleLayout}>

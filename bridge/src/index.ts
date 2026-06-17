@@ -8,6 +8,8 @@ import net from 'net'
 import { parseArgs, printStartupInfo } from './config.js'
 import { createAuthMiddleware } from './auth.js'
 import { createProxyHandler } from './proxy.js'
+
+const __dirname = path.dirname(new URL(import.meta.url).pathname)
 import { startMdns, stopMdns } from './mdns.js'
 import { startWebSocketServer, stopWebSocketServer } from './ws.js'
 import { ensureOpencode, stopOpencode, restartOpencode } from './opencode.js'
@@ -20,6 +22,7 @@ const app = express()
 app.use(cors())
 app.use(express.json({ limit: '50mb' }))
 app.use(morgan('dev'))
+app.use('/static', express.static(path.join(__dirname, '../public')))
 
 // Auth on all /opencode-api routes
 app.use('/opencode-api', createAuthMiddleware(config.token))
