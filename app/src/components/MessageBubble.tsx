@@ -86,9 +86,18 @@ export default function MessageBubble({ message, theme, onToolPress, onRevert, w
     />
   )
 
+  const renderFooter = (style?: any) => (
+    <View style={[styles.footer, style]}>
+      <Text style={[styles.footerTime, { color: theme.textTertiary }]}>{formatTime(message.time?.created)}</Text>
+      <TouchableOpacity onPress={copyText} style={styles.footerCopy} hitSlop={8}>
+        <Feather name={copied ? 'check' : 'copy'} size={13} color={copied ? '#34C759' : theme.textTertiary} />
+      </TouchableOpacity>
+    </View>
+  )
+
   if (message.role === 'user') {
     return (
-      <>
+      <View style={styles.columnContainer}>
         <TouchableOpacity onLongPress={handleLongPress} activeOpacity={1} style={styles.userContainer}>
           <View style={[styles.userBubble, { backgroundColor: theme.userBubble }]}>
             {message.files && message.files.length > 0 && (
@@ -101,14 +110,9 @@ export default function MessageBubble({ message, theme, onToolPress, onRevert, w
             {!!message.text && <Text selectable style={[styles.userText, { color: theme.userBubbleText }]}>{message.text}</Text>}
           </View>
         </TouchableOpacity>
-        <View style={[styles.footer, { justifyContent: 'flex-end' }]}>
-          <Text style={[styles.footerTime, { color: theme.textTertiary }]}>{formatTime(message.time?.created)}</Text>
-          <TouchableOpacity onPress={copyText} style={styles.footerCopy} hitSlop={8}>
-            <Feather name={copied ? 'check' : 'copy'} size={13} color={copied ? '#34C759' : theme.textTertiary} />
-          </TouchableOpacity>
-        </View>
+        {renderFooter({ justifyContent: 'flex-end' })}
         {renderMenu()}
-      </>
+      </View>
     )
   }
 
@@ -116,7 +120,7 @@ export default function MessageBubble({ message, theme, onToolPress, onRevert, w
   const isLoading = !content && !reasoning.text && !reasoning.isActive && toolCalls.length === 0
 
   return (
-    <View style={styles.assistantContainer}>
+    <View style={styles.columnContainer}>
       <TouchableOpacity onLongPress={handleLongPress} activeOpacity={1} style={styles.assistantTouch}>
         {isLoading ? (
           <View style={[styles.loadingBubble, { backgroundColor: theme.aiBubble, borderColor: theme.aiBubbleBorder }]}>
@@ -152,25 +156,18 @@ export default function MessageBubble({ message, theme, onToolPress, onRevert, w
           </View>
         )}
       </TouchableOpacity>
-      {!isLoading && (
-        <View style={styles.footer}>
-          <Text style={[styles.footerTime, { color: theme.textTertiary }]}>{formatTime(message.time?.created)}</Text>
-          <TouchableOpacity onPress={copyText} style={styles.footerCopy} hitSlop={8}>
-            <Feather name={copied ? 'check' : 'copy'} size={13} color={copied ? '#34C759' : theme.textTertiary} />
-          </TouchableOpacity>
-        </View>
-      )}
+      {!isLoading && renderFooter()}
       {renderMenu()}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  userContainer: { marginVertical: 6, flexDirection: 'row', justifyContent: 'flex-end' },
+  columnContainer: { marginVertical: 6 },
+  userContainer: { flexDirection: 'row', justifyContent: 'flex-end' },
   userBubble: { maxWidth: '80%', borderRadius: 20, borderBottomRightRadius: 6, paddingHorizontal: 16, paddingVertical: 10 },
   userFiles: { marginBottom: 4 },
   userText: { fontSize: 15, lineHeight: 22 },
-  assistantContainer: { marginVertical: 6, flexDirection: 'row', justifyContent: 'flex-start' },
   assistantTouch: { flex: 1 },
   assistantBubble: { flex: 1, borderRadius: 20, borderBottomLeftRadius: 6, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10 },
   assistantFiles: { marginTop: 4 },
