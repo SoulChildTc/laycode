@@ -13,6 +13,7 @@ import SettingsScreen from '../screens/SettingsScreen'
 import TodoSummaryScreen from '../screens/TodoSummaryScreen'
 import GitScreen from '../screens/GitScreen'
 import DiffScreen from '../screens/DiffScreen'
+import TerminalScreen from '../screens/TerminalScreen'
 import { LayCodeClient } from '../api/client'
 import { ThemeMode, getTheme } from '../theme'
 import { ServerEntry } from '../types'
@@ -25,12 +26,14 @@ export type RootStackParamList = {
   Session: { projectId: string; sessionId: string }
   Git: { directory: string }
   Diff: { directory: string; file: string; cached?: boolean }
+  Terminal: { directory: string }
 }
 
 export type TabParamList = {
   Home: undefined
   Todos: undefined
   Files: undefined
+  Terminal: undefined
   Settings: undefined
 }
 
@@ -66,6 +69,9 @@ function MainTabs({ themeMode, client, config, navigation: stackNav, onThemeTogg
       </Tab.Screen>
       <Tab.Screen name="Files" options={{ tabBarIcon: ({ color, size }) => <Feather name="folder" size={size} color={color} /> }}>
         {() => <FileExplorerScreen route={{} as any} themeMode={themeMode} client={client!} />}
+      </Tab.Screen>
+      <Tab.Screen name="Terminal" options={{ tabBarIcon: ({ color, size }) => <Feather name="terminal" size={size} color={color} /> }}>
+        {() => <TerminalScreen navigation={stackNav} route={{ params: {} }} themeMode={themeMode} client={client!} config={config!} />}
       </Tab.Screen>
       <Tab.Screen name="Settings" options={{ tabBarIcon: ({ color, size }) => <Feather name="settings" size={size} color={color} /> }}>
         {() => (
@@ -117,6 +123,9 @@ export default function RootNavigator({ screenProps }: { screenProps: ScreenProp
         </Stack.Screen>
         <Stack.Screen name="Session">
           {(props) => <SessionScreen {...props} themeMode={themeMode} client={client!} config={config!} />}
+        </Stack.Screen>
+        <Stack.Screen name="Terminal">
+          {(props) => <TerminalScreen {...props} themeMode={themeMode} client={client!} config={config!} />}
         </Stack.Screen>
         <Stack.Screen name="Git">
           {(props) => <GitScreen {...props} themeMode={themeMode} client={client!} />}
