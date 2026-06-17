@@ -470,61 +470,56 @@ export class LayCodeClient {
   }
 
   async createPty(directory?: string, cwd?: string, command?: string): Promise<any> {
-    const params = directory ? `?directory=${encodeURIComponent(directory)}` : ''
-    const res = await fetch(`${this.baseUrl}/opencode-api/pty${params}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
-      body: JSON.stringify({ cwd, command }),
-    })
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      throw new Error(`PTY create failed (${res.status}): ${text}`)
+    try {
+      const res = await this.v2.pty.create({ directory, cwd, command })
+      return res.data as any
+    } catch (err: any) {
+      throw new Error(err?.message || 'PTY create failed')
     }
-    return res.json()
   }
 
   async listPty(directory?: string): Promise<any[]> {
-    const params = directory ? `?directory=${encodeURIComponent(directory)}` : ''
-    const res = await fetch(`${this.baseUrl}/opencode-api/pty${params}`, {
-      headers: { Authorization: `Bearer ${this.token}` },
-    })
-    if (!res.ok) return []
-    return res.json()
+    try {
+      const res = await this.v2.pty.list({ directory })
+      return (res.data as any) || []
+    } catch {
+      return []
+    }
   }
 
   async getPty(ptyID: string): Promise<any> {
-    const res = await fetch(`${this.baseUrl}/opencode-api/pty/${encodeURIComponent(ptyID)}`, {
-      headers: { Authorization: `Bearer ${this.token}` },
-    })
-    if (!res.ok) return null
-    return res.json()
+    try {
+      const res = await this.v2.pty.get({ ptyID })
+      return res.data as any
+    } catch {
+      return null
+    }
   }
 
   async removePty(ptyID: string): Promise<boolean> {
-    const res = await fetch(`${this.baseUrl}/opencode-api/pty/${encodeURIComponent(ptyID)}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${this.token}` },
-    })
-    return res.ok
+    try {
+      await this.v2.pty.remove({ ptyID })
+      return true
+    } catch {
+      return false
+    }
   }
 
   async updatePtySize(ptyID: string, cols: number, rows: number): Promise<boolean> {
-    const res = await fetch(`${this.baseUrl}/opencode-api/pty/${encodeURIComponent(ptyID)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
-      body: JSON.stringify({ size: { cols, rows } }),
-    })
-    return res.ok
+    try {
+      await this.v2.pty.update({ ptyID, size: { cols, rows } })
+      return true
+    } catch {
+      return false
+    }
   }
 
   async connectPtyToken(ptyID: string): Promise<{ ticket: string } | null> {
-    const res = await fetch(`${this.baseUrl}/opencode-api/pty/${encodeURIComponent(ptyID)}/connect-token`, {
-      headers: { Authorization: `Bearer ${this.token}` },
-    })
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      throw new Error(`PTY connect-token failed (${res.status}): ${text}`)
+    try {
+      const res = await this.v2.pty.connectToken({ ptyID })
+      return res.data as any
+    } catch {
+      return null
     }
-    return res.json()
   }
 }
