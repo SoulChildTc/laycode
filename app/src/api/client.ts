@@ -468,4 +468,56 @@ export class LayCodeClient {
       throw new Error(data.error || 'Git discard failed')
     }
   }
+
+  async createPty(directory: string, cwd?: string, command?: string): Promise<any> {
+    const res = await fetch(`${this.baseUrl}/opencode-api/pty`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
+      body: JSON.stringify({ directory, cwd, command }),
+    })
+    if (!res.ok) return null
+    return res.json()
+  }
+
+  async listPty(directory?: string): Promise<any[]> {
+    const params = directory ? `?directory=${encodeURIComponent(directory)}` : ''
+    const res = await fetch(`${this.baseUrl}/opencode-api/pty${params}`, {
+      headers: { Authorization: `Bearer ${this.token}` },
+    })
+    if (!res.ok) return []
+    return res.json()
+  }
+
+  async getPty(ptyID: string): Promise<any> {
+    const res = await fetch(`${this.baseUrl}/opencode-api/pty/${encodeURIComponent(ptyID)}`, {
+      headers: { Authorization: `Bearer ${this.token}` },
+    })
+    if (!res.ok) return null
+    return res.json()
+  }
+
+  async removePty(ptyID: string): Promise<boolean> {
+    const res = await fetch(`${this.baseUrl}/opencode-api/pty/${encodeURIComponent(ptyID)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.token}` },
+    })
+    return res.ok
+  }
+
+  async updatePtySize(ptyID: string, cols: number, rows: number): Promise<boolean> {
+    const res = await fetch(`${this.baseUrl}/opencode-api/pty/${encodeURIComponent(ptyID)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
+      body: JSON.stringify({ size: { cols, rows } }),
+    })
+    return res.ok
+  }
+
+  async connectPtyToken(ptyID: string): Promise<{ ticket: string } | null> {
+    const res = await fetch(`${this.baseUrl}/opencode-api/pty/${encodeURIComponent(ptyID)}/connect-token`, {
+      headers: { Authorization: `Bearer ${this.token}` },
+    })
+    if (!res.ok) return null
+    return res.json()
+  }
 }
