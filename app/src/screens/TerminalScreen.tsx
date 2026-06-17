@@ -36,6 +36,8 @@ export default function TerminalScreen({ navigation, route, themeMode, client, c
   const [exited, setExited] = useState(false)
   const [timedOut, setTimedOut] = useState(false)
   const mountedRef = useRef(true)
+  const statusRef = useRef(status)
+  statusRef.current = status
 
   const initTerminal = useCallback(async () => {
     setExited(false)
@@ -53,7 +55,7 @@ export default function TerminalScreen({ navigation, route, themeMode, client, c
     initTerminal()
 
     const timer = setTimeout(() => {
-      if (mountedRef.current && status === 'creating') {
+      if (mountedRef.current && statusRef.current === 'creating') {
         setTimedOut(true)
       }
     }, LOADING_TIMEOUT)
