@@ -4,6 +4,7 @@ import morgan from 'morgan'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import net from 'net'
 import { parseArgs, printStartupInfo } from './config.js'
 import { createAuthMiddleware } from './auth.js'
 import { createProxyHandler } from './proxy.js'
@@ -250,6 +251,37 @@ const server = app.listen(config.port, async () => {
     console.error(`  Error: ${err.message}`)
     process.exit(1)
   }
+})
+
+// WebSocket proxy for PTY connections
+server.on('upgrade', (req, socket, head) => {
+  if (!req.url) { socket.destroy(); return }
+  const url = new URL(req.url, 'http://localhost')
+  const match = url.pathname.match(/^\/opencode-api\/pty\/([^/]+)\/connect$/)
+  if (!match) {
+    socket.destroy()
+    return
+  }
+
+  const targetPath = `/pty/${match[1]}/connect${url.search}`
+  const target = new URL(targetPath, config.opencodeUrl)
+
+  const proxy = net.connect(Number(target.port) || 80, target.hostname, () => {
+    proxy.write(
+      `GET ${targetPath} HTTP/1.1\r\n` +
+      `Host: ${target.host}\r\n` +
+      `Upgrade: websocket\r\n` +
+      `Connection: Upgrade\r\n` +
+      `Sec-WebSocket-Key: ${req.headers['sec-websocket-key'] || ''}\r\n` +
+      `Sec-WebSocket-Version: ${req.headers['sec-websocket-version'] || '13'}\r\n` +
+      `\r\n`,
+    )
+    proxy.pipe(socket)
+    socket.pipe(proxy)
+  })
+
+  proxy.on('error', () => { try { socket.destroy() } catch {} })
+  socket.on('error', () => { try { proxy.destroy() } catch {} })
 })
 
 // Graceful shutdown
