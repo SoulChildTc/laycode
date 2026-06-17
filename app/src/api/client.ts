@@ -469,13 +469,17 @@ export class LayCodeClient {
     }
   }
 
-  async createPty(directory: string, cwd?: string, command?: string): Promise<any> {
-    const res = await fetch(`${this.baseUrl}/opencode-api/pty`, {
+  async createPty(directory?: string, cwd?: string, command?: string): Promise<any> {
+    const params = directory ? `?directory=${encodeURIComponent(directory)}` : ''
+    const res = await fetch(`${this.baseUrl}/opencode-api/pty${params}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
-      body: JSON.stringify({ directory, cwd, command }),
+      body: JSON.stringify({ cwd, command }),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`PTY create failed (${res.status}): ${text}`)
+    }
     return res.json()
   }
 
@@ -517,7 +521,10 @@ export class LayCodeClient {
     const res = await fetch(`${this.baseUrl}/opencode-api/pty/${encodeURIComponent(ptyID)}/connect-token`, {
       headers: { Authorization: `Bearer ${this.token}` },
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`PTY connect-token failed (${res.status}): ${text}`)
+    }
     return res.json()
   }
 }
