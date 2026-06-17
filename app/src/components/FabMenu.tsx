@@ -11,6 +11,7 @@ interface ToolEntry {
 
 const TOOLS: ToolEntry[] = [
   { id: 'git', icon: 'git-commit', label: 'Git' },
+  { id: 'terminal', icon: 'terminal', label: 'Terminal' },
 ]
 
 interface Props {

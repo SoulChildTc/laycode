@@ -1214,7 +1214,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
         {cwd && (
           <Animated.View style={[styles.fabContainer, { transform: fabPan.getTranslateTransform() }]} {...fabPanResponder.panHandlers}>
-            <FabMenu visible={fabMenuVisible} theme={theme} onToolPress={(tool) => { setFabMenuVisible(false); navigation.push('Git', { directory: cwd }) }} />
+            <FabMenu visible={fabMenuVisible} theme={theme} onToolPress={(tool) => { setFabMenuVisible(false); if (tool === 'git') navigation.push('Git', { directory: cwd }); else if (tool === 'terminal') navigation.push('Terminal', { directory: cwd }) }} />
             <Animated.View style={[styles.fab, { backgroundColor: theme.accent, transform: [{ rotate: fabRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] }) }] }]}>
               <Feather name="tool" size={22} color="#fff" />
             </Animated.View>
