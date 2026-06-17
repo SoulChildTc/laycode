@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, LayoutChangeEvent, ActivityIndicator } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, LayoutChangeEvent, ActivityIndicator, Platform } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { WebView } from 'react-native-webview'
 import { Feather } from '@expo/vector-icons'
 import TerminalToolbar from '../components/TerminalToolbar'
 import { useTerminal } from '../hooks/useTerminal'
@@ -20,9 +19,17 @@ interface Props {
 const CHAR_W = 9
 const CHAR_H = 20
 const LOADING_TIMEOUT = 15000
+const isWeb = Platform.OS === 'web'
 
-function buildTerminalHtml(wsUrl: string, ticket: string): string {
-  return '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>body{margin:0;padding:0;background:#0f0f1a;overflow:hidden}#t{width:100vw;height:100vh}#o{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,15,26,0.9);color:#888;font-family:monospace;font-size:16px;align-items:center;justify-content:center;z-index:10}</style></head><body><div id="t"></div><div id="o"></div><script>var w=' + JSON.stringify(wsUrl) + ',p=' + JSON.stringify(ticket) + ';if(!w){document.getElementById("o").style.display="flex";document.getElementById("o").textContent="No WS URL"}else{var s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/xterm@5.5.0/lib/xterm.min.js";s.onload=function(){var f=document.createElement("script");f.src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.10.0/lib/xterm-addon-fit.min.js";f.onload=init;document.head.appendChild(f)};document.head.appendChild(s)}function init(){var t=new Terminal({cursorBlink:true,cursorStyle:"bar",fontSize:14,fontFamily:"Menlo,Monaco,Courier New,monospace",theme:{background:"#0f0f1a",foreground:"#e8e8f0",cursor:"#e8e8f0",selectionBackground:"#6c7dff44"},cols:80,rows:24});var a=new FitAddon.FitAddon();t.loadAddon(a);t.open(document.getElementById("t"));a.fit();window.__t=t;var ws=null;function connect(){ws=new WebSocket(w+"?ticket="+encodeURIComponent(p)+"&cursor=-1");ws.onopen=function(){t.focus();window.ReactNativeWebView.postMessage(JSON.stringify({type:"ws-open"}))};ws.onmessage=function(e){if(e.data instanceof Blob){e.data.arrayBuffer().then(function(b){var u8=new Uint8Array(b);if(u8[0]===0){try{var m=JSON.parse(new TextDecoder().decode(u8.slice(1)));window.ReactNativeWebView.postMessage(JSON.stringify({type:"cursor",cursor:m.cursor}))}catch(ex){}return}t.write(new Uint8Array(b))});return}t.write(e.data)};ws.onclose=function(e){window.ReactNativeWebView.postMessage(JSON.stringify({type:"ws-close",code:e.code}))};ws.onerror=function(){window.ReactNativeWebView.postMessage(JSON.stringify({type:"ws-error"}))}}connect();t.onData(function(d){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(d)});window.addEventListener("resize",function(){try{a.fit()}catch(e){}})}</script></body></html>'
+function escapeJsStr(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+}
+
+function buildTerminalHtml(wsUrl: string, ticket: string, directory?: string): string {
+  var w = escapeJsStr(wsUrl)
+  var p = escapeJsStr(ticket)
+  var d = directory ? '&directory=' + encodeURIComponent(directory) : ''
+  return '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>body{margin:0;padding:0;background:#0f0f1a;overflow:hidden}#t{width:100vw;height:100vh}.xterm-helper-textarea{position:absolute!important;left:-9999px!important;top:0!important;opacity:0!important;width:1px!important;height:1px!important;z-index:-1!important}#e{display:none;position:fixed;top:0;left:0;width:100%;height:100%;color:#f87171;font-family:monospace;font-size:14px;align-items:center;justify-content:center;z-index:10;padding:20px;text-align:center;box-sizing:border-box}#l{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#5c5c7a;font-family:monospace;font-size:13px;z-index:5}</style></head><body><div id="t"></div><div id="l">Loading terminal...</div><div id="e"></div><script>var w="' + w + '",p="' + p + '",d="' + d + '";var l=document.getElementById("l");function log(m){window.ReactNativeWebView.postMessage(JSON.stringify({type:"log",message:m}))}function loadScript(u,fallback,onload){var s=document.createElement("script");s.src=u;s.onload=function(){l.style.display="none";if(onload)onload()};s.onerror=function(){if(fallback){log("CDN fallback: "+u);loadScript(fallback[0],fallback[1],fallback[2])}else{l.style.display="none";var e=document.getElementById("e");e.style.display="flex";e.textContent="Failed to load xterm from CDN"}};document.head.appendChild(s)}log("loading xterm");loadScript("https://cdn.jsdelivr.net/npm/xterm@5.5.0/lib/xterm.min.js",["https://unpkg.com/xterm@5.5.0/lib/xterm.min.js",null,function(){loadScript("https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.10.0/lib/xterm-addon-fit.min.js",["https://unpkg.com/xterm-addon-fit@0.10.0/lib/xterm-addon-fit.min.js",null,init])}]);function init(){try{var t=new Terminal({cursorBlink:true,cursorStyle:"bar",fontSize:14,fontFamily:"Menlo,Monaco,Courier New,monospace",theme:{background:"#0f0f1a",foreground:"#e8e8f0",cursor:"#e8e8f0",selectionBackground:"#6c7dff44"},cols:80,rows:24});var a=new FitAddon.FitAddon();t.loadAddon(a);t.open(document.getElementById("t"));setTimeout(function(){try{a.fit()}catch(e){}},500);window.__t=t;var url=w+"?ticket="+encodeURIComponent(p)+"&cursor=-1"+d;log("connecting: "+url);var ws=new WebSocket(url);ws.onopen=function(){log("ws open");t.focus()};ws.onmessage=function(e){if(e.data instanceof Blob){e.data.arrayBuffer().then(function(b){var u8=new Uint8Array(b);if(u8[0]===0)return;t.write(new Uint8Array(b))});return}t.write(e.data)};ws.onclose=function(e){window.ReactNativeWebView.postMessage(JSON.stringify({type:"ws-close",code:e.code}))};ws.onerror=function(){window.ReactNativeWebView.postMessage(JSON.stringify({type:"ws-error"}))};t.onData(function(d){if(ws.readyState===WebSocket.OPEN)ws.send(d)});window.addEventListener("resize",function(){try{a.fit()}catch(e){log("fit error: "+e.message)}})}catch(e){l.style.display="none";var e2=document.getElementById("e");e2.style.display="flex";e2.textContent="Terminal error: "+e.message}}</script></body></html>'
 }
 
 export default function TerminalScreen({ navigation, route, themeMode, client, config }: Props) {
@@ -31,10 +38,10 @@ export default function TerminalScreen({ navigation, route, themeMode, client, c
   const host = config?.host || 'localhost'
   const port = config?.port || 8079
   const { ptyID, status, wsUrl, errorMessage, createPty, destroyPty, resizePty } = useTerminal(client, directory, host, port)
-  const webViewRef = useRef<WebView>(null)
   const [ticket, setTicket] = useState('')
   const [exited, setExited] = useState(false)
   const [timedOut, setTimedOut] = useState(false)
+  const [wsError, setWsError] = useState('')
   const mountedRef = useRef(true)
   const statusRef = useRef(status)
   statusRef.current = status
@@ -42,6 +49,7 @@ export default function TerminalScreen({ navigation, route, themeMode, client, c
   const initTerminal = useCallback(async () => {
     setExited(false)
     setTimedOut(false)
+    setWsError('')
     const result = await createPty()
     if (!mountedRef.current) return
     if (result) {
@@ -53,48 +61,21 @@ export default function TerminalScreen({ navigation, route, themeMode, client, c
   useEffect(() => {
     mountedRef.current = true
     initTerminal()
-
-    const timer = setTimeout(() => {
+    var timer = setTimeout(function() {
       if (mountedRef.current && statusRef.current === 'creating') {
         setTimedOut(true)
       }
     }, LOADING_TIMEOUT)
-
-    return () => {
+    return function() {
       mountedRef.current = false
       clearTimeout(timer)
-      destroyPty()
     }
   }, [])
 
-  const handleWebViewMessage = useCallback((event: any) => {
-    try {
-      const msg = JSON.parse(event.nativeEvent.data)
-      if (msg.type === 'ws-close') {
-        setExited(true)
-      }
-    } catch {}
-  }, [])
-
-  const handleLayout = useCallback((e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout
-    const cols = Math.floor(width / CHAR_W)
-    const rows = Math.floor(height / CHAR_H)
-    if (cols > 5 && rows > 2) {
-      resizePty(cols, rows)
-      if (ptyID) {
-        webViewRef.current?.injectJavaScript('try{window.__t&&__t.resize(' + cols + ',' + rows + ')}catch(e){};true')
-      }
-    }
-  }, [resizePty, ptyID])
-
-  const handleKeystroke = useCallback((data: string) => {
-    webViewRef.current?.injectJavaScript('try{window.__t&&window.__t.paste(' + JSON.stringify(data) + ')}catch(e){};true')
-  }, [])
-
-  const initializing = status === 'creating' || status === 'idle'
-  const showError = status === 'error' || timedOut
-  const showTerminal = status !== 'creating' && status !== 'idle' && !showError
+  var initializing = status === 'creating' || status === 'idle'
+  var showError = status === 'error' || timedOut || !!wsError
+  var showTerminal = status !== 'creating' && status !== 'idle' && !showError
+  var displayError = wsError || errorMessage
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
@@ -106,8 +87,8 @@ export default function TerminalScreen({ navigation, route, themeMode, client, c
         <View style={{ flex: 1 }} />
       </View>
 
-      <View style={styles.webViewContainer} onLayout={handleLayout}>
-        {initializing && !timedOut && (
+      <View style={isWeb ? styles.terminalContainer : styles.webViewContainer}>
+        {initializing && !timedOut && !wsError && (
           <View style={styles.center}>
             <ActivityIndicator size="small" color={theme.accent} />
             <Text style={[styles.centerText, { color: theme.textTertiary }]}>Starting terminal...</Text>
@@ -118,13 +99,10 @@ export default function TerminalScreen({ navigation, route, themeMode, client, c
           <View style={styles.center}>
             <Feather name="alert-circle" size={32} color={theme.error} />
             <Text style={[styles.errorTitle, { color: theme.error }]}>Connection failed</Text>
-            {errorMessage ? (
-              <Text style={[styles.errorDetail, { color: theme.textTertiary }]}>{errorMessage}</Text>
+            {displayError ? (
+              <Text style={[styles.errorDetail, { color: theme.textTertiary }]}>{displayError}</Text>
             ) : null}
-            <TouchableOpacity
-              style={[styles.retryBtn, { backgroundColor: theme.accent }]}
-              onPress={initTerminal}
-            >
+            <TouchableOpacity style={[styles.retryBtn, { backgroundColor: theme.accent }]} onPress={initTerminal}>
               <Feather name="refresh-cw" size={14} color="#fff" style={{ marginRight: 6 }} />
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
@@ -132,20 +110,11 @@ export default function TerminalScreen({ navigation, route, themeMode, client, c
         )}
 
         {showTerminal && !showError && (
-          <WebView
-            ref={webViewRef}
-            source={{ html: buildTerminalHtml(wsUrl, ticket) }}
-            style={styles.webView}
-            onMessage={handleWebViewMessage}
-            originWhitelist={['*']}
-            javaScriptEnabled
-            domStorageEnabled
-            scrollEnabled={false}
-            bounces={false}
-            overScrollMode="never"
-            hideKeyboardAccessoryView={false}
-            keyboardDisplayRequiresUserAction={false}
-          />
+          isWeb ? (
+            <TerminalViewWeb wsUrl={wsUrl} ticket={ticket} directory={directory} ptyID={ptyID} resizePty={resizePty} setExited={setExited} onError={setWsError} />
+          ) : (
+            <TerminalViewNative wsUrl={wsUrl} ticket={ticket} directory={directory} ptyID={ptyID} resizePty={resizePty} setExited={setExited} onError={setWsError} />
+          )
         )}
       </View>
 
@@ -159,9 +128,153 @@ export default function TerminalScreen({ navigation, route, themeMode, client, c
         </View>
       )}
 
-      <TerminalToolbar theme={theme} onKeystroke={handleKeystroke} visible={showTerminal && !exited} />
+      <TerminalToolbar theme={theme} onKeystroke={terminalKeystroke} visible={showTerminal && !exited} />
     </SafeAreaView>
   )
+}
+
+var terminalPaste: ((data: string) => void) | null = null
+function terminalKeystroke(data: string) {
+  if (terminalPaste) terminalPaste(data)
+}
+
+function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resizePty, setExited, onError }: any) {
+  var ref = useRef<any>(null)
+  var html = buildTerminalHtml(wsUrl, ticket, directory)
+  var WebView = require('react-native-webview').WebView
+
+  useEffect(function() {
+    terminalPaste = function(data: string) {
+      ref.current?.injectJavaScript("try{window.__t&&window.__t.paste(" + JSON.stringify(data) + ")}catch(e){};true")
+    }
+  }, [])
+
+  var handleMessage = useCallback(function(event: any) {
+    try {
+      var msg = JSON.parse(event.nativeEvent.data)
+      if (msg.type === 'ws-close') setExited(true)
+      else if (msg.type === 'ws-error') onError('WebSocket connection failed')
+      else if (msg.type === 'log') console.log('[WebView]', msg.message)
+    } catch {}
+  }, [setExited, onError])
+
+  var handleLayout = useCallback(function(e: LayoutChangeEvent) {
+    var cols = Math.floor(e.nativeEvent.layout.width / CHAR_W)
+    var rows = Math.floor(e.nativeEvent.layout.height / CHAR_H)
+    if (cols > 5 && rows > 2) {
+      resizePty(cols, rows)
+      ref.current?.injectJavaScript("try{window.__t&&__t.resize(" + cols + "," + rows + ")}catch(e){};true")
+    }
+  }, [resizePty])
+
+  return (
+    <View style={{ flex: 1 }} onLayout={handleLayout}>
+      <WebView
+        ref={ref}
+        source={{ html }}
+        style={{ flex: 1, backgroundColor: '#0f0f1a' }}
+        onMessage={handleMessage}
+        originWhitelist={['*']}
+        javaScriptEnabled
+        domStorageEnabled
+        scrollEnabled={false}
+        bounces={false}
+        overScrollMode="never"
+        hideKeyboardAccessoryView={false}
+        keyboardDisplayRequiresUserAction={false}
+      />
+    </View>
+  )
+}
+
+function TerminalViewWeb({ wsUrl, ticket, directory, ptyID, resizePty, setExited, onError }: any) {
+  var divRef = useRef<HTMLDivElement>(null)
+
+  useEffect(function() {
+    var style = document.createElement('style')
+    style.textContent = '.xterm-helper-textarea{position:absolute!important;left:-9999px!important;top:0!important;opacity:0!important;width:1px!important;height:1px!important;z-index:-1!important}'
+    document.head.appendChild(style)
+    return function() { try { style.remove() } catch {} }
+  }, [])
+
+  useEffect(function() {
+    if (!divRef.current || !wsUrl || !ticket) return
+
+    var disposed = false
+    var term: any = null
+    var ws: WebSocket | null = null
+    var ro: ResizeObserver | null = null
+
+    async function init() {
+      console.log('[TerminalViewWeb] init start')
+      try {
+        var m = await import('xterm')
+        var fa = await import('xterm-addon-fit')
+        if (disposed || !divRef.current) return
+        console.log('[TerminalViewWeb] xterm loaded')
+
+        var Terminal = m.Terminal
+        var FitAddon = fa.FitAddon
+
+        term = new Terminal({
+          cursorBlink: true,
+          cursorStyle: 'bar',
+          fontSize: 14,
+          fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+          theme: { background: '#0f0f1a', foreground: '#e8e8f0', cursor: '#e8e8f0', selectionBackground: '#6c7dff44' },
+          cols: 80,
+          rows: 24,
+        })
+
+        var fitAddon = new FitAddon()
+        term.loadAddon(fitAddon)
+        term.open(divRef.current)
+        fitAddon.fit()
+
+        terminalPaste = function(data: string) { term.paste(data) }
+
+        var dirParam = directory ? '&directory=' + encodeURIComponent(directory) : ''
+        var fullUrl = wsUrl + '?ticket=' + encodeURIComponent(ticket) + '&cursor=-1' + dirParam
+        console.log('[TerminalViewWeb] connecting:', fullUrl)
+
+        ws = new WebSocket(fullUrl)
+        ws.onopen = function() { console.log('[TerminalViewWeb] ws open'); term.focus() }
+        ws.onmessage = function(ev) {
+          if (ev.data instanceof Blob) {
+            ev.data.arrayBuffer().then(function(buf) {
+              var u8 = new Uint8Array(buf)
+              if (u8[0] === 0x00) return
+              term.write(new Uint8Array(buf))
+            })
+            return
+          }
+          term.write(ev.data)
+        }
+        ws.onclose = function(e) { console.log('[TerminalViewWeb] ws close', e.code); if (!disposed) setExited(true) }
+        ws.onerror = function() { console.log('[TerminalViewWeb] ws error'); if (!disposed) onError('WebSocket connection failed') }
+        term.onData(function(data: string) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(data) })
+
+        ro = new ResizeObserver(function() {
+          try {
+            fitAddon.fit()
+            var c = Math.floor((divRef.current!.clientWidth || 800) / 9)
+            var r = Math.floor((divRef.current!.clientHeight || 400) / 20)
+            resizePty(c, r)
+          } catch(e) {}
+        })
+        ro.observe(divRef.current)
+        console.log('[TerminalViewWeb] ready')
+      } catch (err: any) {
+        console.error('[TerminalViewWeb] init error:', err)
+        if (!disposed) onError(err?.message || 'Terminal init failed')
+      }
+    }
+
+    init()
+    return function() { disposed = true; if (ro) ro.disconnect(); if (ws) ws.close(); if (term) term.dispose() }
+  }, [wsUrl, ticket, directory, resizePty, setExited, onError])
+
+  return <div ref={divRef} style={{ width: '100%', height: '100%', background: '#0f0f1a' }} />
 }
 
 const styles = StyleSheet.create({
@@ -176,7 +289,7 @@ const styles = StyleSheet.create({
   backBtn: { padding: 4, marginRight: 8 },
   title: { fontSize: 16, fontWeight: '600' },
   webViewContainer: { flex: 1 },
-  webView: { flex: 1, backgroundColor: '#0f0f1a' },
+  terminalContainer: { flex: 1, overflow: 'hidden' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 },
   centerText: { fontSize: 14 },
   errorTitle: { fontSize: 16, fontWeight: '600', marginTop: 8 },

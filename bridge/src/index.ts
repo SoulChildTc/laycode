@@ -255,18 +255,23 @@ const server = app.listen(config.port, async () => {
 
 // WebSocket proxy for PTY connections
 server.on('upgrade', (req, socket, head) => {
-  if (!req.url) { socket.destroy(); return }
+  if (!req.url) { console.log('[ws-proxy] no url, destroying'); socket.destroy(); return }
   const url = new URL(req.url, 'http://localhost')
+  console.log('[ws-proxy] upgrade request:', req.url)
   const match = url.pathname.match(/^\/opencode-api\/pty\/([^/]+)\/connect$/)
   if (!match) {
+    console.log('[ws-proxy] no match for:', url.pathname)
     socket.destroy()
     return
   }
 
+  console.log('[ws-proxy] proxying pty:', match[1])
   const targetPath = `/pty/${match[1]}/connect${url.search}`
   const target = new URL(targetPath, config.opencodeUrl)
+  console.log('[ws-proxy] target:', target.href)
 
   const proxy = net.connect(Number(target.port) || 80, target.hostname, () => {
+    console.log('[ws-proxy] connected to opencode, sending upgrade')
     proxy.write(
       `GET ${targetPath} HTTP/1.1\r\n` +
       `Host: ${target.host}\r\n` +
@@ -280,8 +285,8 @@ server.on('upgrade', (req, socket, head) => {
     socket.pipe(proxy)
   })
 
-  proxy.on('error', () => { try { socket.destroy() } catch {} })
-  socket.on('error', () => { try { proxy.destroy() } catch {} })
+  proxy.on('error', (err) => { console.log('[ws-proxy] proxy error:', err.message); try { socket.destroy() } catch {} })
+  socket.on('error', (err) => { console.log('[ws-proxy] socket error:', err.message); try { proxy.destroy() } catch {} })
 })
 
 // Graceful shutdown
