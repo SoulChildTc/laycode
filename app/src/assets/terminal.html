@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+  body { margin: 0; padding: 0; background: #0f0f1a; overflow: hidden; }
+  #terminal { width: 100vw; height: 100vh; }
+  #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,15,26,0.9); color: #888; font-family: monospace; font-size: 16px; align-items: center; justify-content: center; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="terminal"></div>
+<div id="overlay"></div>
+<script>
+var params = new URLSearchParams(location.search)
+var wsUrl = params.get('wsUrl')
+var ticket = params.get('ticket')
+var cursor = params.get('cursor') || '-1'
+
+if (!wsUrl) {
+  document.getElementById('overlay').style.display = 'flex'
+  document.getElementById('overlay').textContent = 'Error: No WebSocket URL'
+} else {
+  var s = document.createElement('script')
+  s.src = 'https://cdn.jsdelivr.net/npm/xterm@5.5.0/lib/xterm.min.js'
+  s.onload = function() {
+    var f = document.createElement('script')
+    f.src = 'https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.10.0/lib/xterm-addon-fit.min.js'
+    f.onload = init
+    document.head.appendChild(f)
+  }
+  document.head.appendChild(s)
+}
+
+function init() {
+  var term = new Terminal({
+    cursorBlink: true,
+    cursorStyle: 'bar',
+    fontSize: 14,
+    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+    theme: { background: '#0f0f1a', foreground: '#e8e8f0', cursor: '#e8e8f0', selectionBackground: '#6c7dff44' },
+    cols: 80,
+    rows: 24,
+  })
+
+  var fitAddon = new FitAddon.FitAddon()
+  term.loadAddon(fitAddon)
+  term.open(document.getElementById('terminal'))
+  fitAddon.fit()
+
+  var ws = null
+  var reconnectAttempts = 0
+  var MAX_RECONNECT = 3
+
+  function connect() {
+    var fullUrl = wsUrl + '?ticket=' + encodeURIComponent(ticket) + '&cursor=' + cursor
+    ws = new WebSocket(fullUrl)
+
+    ws.onopen = function() {
+      reconnectAttempts = 0
+      term.focus()
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ws-open' }))
+    }
+
+    ws.onmessage = function(ev) {
+      if (ev.data instanceof Blob) {
+        ev.data.arrayBuffer().then(function(buf) {
+          var u8 = new Uint8Array(buf)
+          if (u8[0] === 0x00) {
+            var meta = JSON.parse(new TextDecoder().decode(u8.slice(1)))
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'cursor', cursor: meta.cursor }))
+          } else {
+            term.write(new Uint8Array(buf))
+          }
+        })
+        return
+      }
+      term.write(ev.data)
+    }
+
+    ws.onclose = function(e) {
+      if (e.code !== 1000 && reconnectAttempts < MAX_RECONNECT) {
+        reconnectAttempts++
+        setTimeout(connect, 2000 * reconnectAttempts)
+      }
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ws-close', code: e.code }))
+    }
+
+    ws.onerror = function() {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ws-error' }))
+    }
+  }
+
+  connect()
+
+  term.onData(function(data) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(data)
+    }
+  })
+
+  window.addEventListener('resize', function() {
+    try { fitAddon.fit() } catch(e) {}
+  })
+
+  window.addEventListener('message', function(ev) {
+    try {
+      var msg = JSON.parse(ev.data)
+      if (msg.type === 'keystroke') {
+        term.paste(msg.data)
+      } else if (msg.type === 'resize') {
+        term.resize(msg.cols, msg.rows)
+      }
+    } catch(e) {}
+  })
+}
+</script>
+</body>
+</html>
