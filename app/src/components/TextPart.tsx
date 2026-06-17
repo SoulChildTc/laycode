@@ -1,26 +1,60 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import { useWindowDimensions, TextStyle, ViewStyle, Modal, SafeAreaView, TouchableOpacity, ScrollView, View, StyleSheet, Text } from 'react-native'
 import { Feather } from '@expo/vector-icons'
+import * as Clipboard from 'expo-clipboard'
 import Markdown from 'react-native-markdown-display'
+
+const TABLE_LIKE = /^\|.+\|\s*$/m
+
+function splitContent(text: string): string[] {
+  const lines = text.split('\n')
+  const segments: string[] = []
+  let buf: string[] = []
+  let inTable = false
+
+  for (const line of lines) {
+    const isTableLine = TABLE_LIKE.test(line)
+    if (isTableLine && !inTable) {
+      if (buf.length) segments.push(buf.join('\n'))
+      buf = [line]
+      inTable = true
+    } else if (!isTableLine && inTable) {
+      if (buf.length) segments.push(buf.join('\n'))
+      buf = [line]
+      inTable = false
+    } else {
+      buf.push(line)
+    }
+  }
+  if (buf.length) segments.push(buf.join('\n'))
+  return segments
+}
+
+const BODY_TEXT: any = (node: any, children: any, parent: any, styles: any) => (
+  <Text key={node.key} style={styles.body} selectable>
+    {children}
+  </Text>
+)
 
 const SELECTABLE_RULES: Record<string, any> = {
   body: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.body} selectable>
+    <View key={node.key} style={styles.body}>
       {children}
-    </Text>
+    </View>
   ),
   paragraph: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.paragraph}>
+    <Text key={node.key} style={styles.paragraph} selectable>
       {children}
+      {'\n'}
     </Text>
   ),
   text: (node: any, children: any, parent: any, styles: any, inheritedStyles: any = {}) => (
-    <Text key={node.key} style={[inheritedStyles, styles.text]}>
+    <Text key={node.key} style={[inheritedStyles, styles.text]} selectable>
       {node.content}
     </Text>
   ),
   textgroup: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.textgroup}>
+    <Text key={node.key} style={styles.textgroup} selectable>
       {children}
     </Text>
   ),
@@ -30,38 +64,45 @@ const SELECTABLE_RULES: Record<string, any> = {
     </Text>
   ),
   heading1: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.heading1}>
+    <Text key={node.key} style={styles.heading1} selectable>
       {children}
+      {'\n'}
     </Text>
   ),
   heading2: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.heading2}>
+    <Text key={node.key} style={styles.heading2} selectable>
       {children}
+      {'\n'}
     </Text>
   ),
   heading3: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.heading3}>
+    <Text key={node.key} style={styles.heading3} selectable>
       {children}
+      {'\n'}
     </Text>
   ),
   heading4: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.heading4}>
+    <Text key={node.key} style={styles.heading4} selectable>
       {children}
+      {'\n'}
     </Text>
   ),
   heading5: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.heading5}>
+    <Text key={node.key} style={styles.heading5} selectable>
       {children}
+      {'\n'}
     </Text>
   ),
   heading6: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.heading6}>
+    <Text key={node.key} style={styles.heading6} selectable>
       {children}
+      {'\n'}
     </Text>
   ),
   list_item: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.list_item}>
+    <Text key={node.key} style={styles.list_item} selectable>
       {children}
+      {'\n'}
     </Text>
   ),
   link: (node: any, children: any, parent: any, styles: any, inheritedStyles: any = {}) => (
@@ -90,24 +131,34 @@ const SELECTABLE_RULES: Record<string, any> = {
     </Text>
   ),
   table: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.table}>
+    <View key={node.key} style={styles.table}>
       {children}
-    </Text>
+    </View>
   ),
   thead: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.thead}>
+    <View key={node.key} style={styles.thead}>
       {children}
-    </Text>
+    </View>
   ),
   tbody: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.tbody}>
+    <View key={node.key} style={styles.tbody}>
       {children}
-    </Text>
+    </View>
   ),
   tr: (node: any, children: any, parent: any, styles: any) => (
-    <Text key={node.key} style={styles.tr}>
+    <View key={node.key} style={styles.tr}>
       {children}
-    </Text>
+    </View>
+  ),
+  th: (node: any, children: any, parent: any, styles: any) => (
+    <View key={node.key} style={styles.th}>
+      {children}
+    </View>
+  ),
+  td: (node: any, children: any, parent: any, styles: any) => (
+    <View key={node.key} style={styles.td}>
+      {children}
+    </View>
   ),
 }
 
@@ -122,6 +173,15 @@ export default function TextPart({ text, theme, isUser }: Props) {
   if (!text) return null
   const { width } = useWindowDimensions()
   const [fullscreen, setFullscreen] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const segments = useMemo(() => splitContent(text), [text])
+
+  const handleCopy = useCallback(() => {
+    Clipboard.setStringAsync(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }, [text])
 
   const style: Record<string, TextStyle | ViewStyle> = {
     body: { color: isUser ? '#fff' : theme.text, fontSize: 15, lineHeight: 26 },
@@ -153,9 +213,9 @@ export default function TextPart({ text, theme, isUser }: Props) {
     ordered_list: { marginVertical: 4 },
     table: { borderWidth: 1, borderColor: theme.border, marginVertical: 6, borderRadius: 6, overflow: 'hidden' as const },
     thead: { backgroundColor: theme.surfaceSecondary } as any,
-    th: { padding: 8, fontWeight: '600' as const, borderRightWidth: 1, borderColor: theme.border, color: theme.text },
-    td: { padding: 8, borderRightWidth: 1, borderColor: theme.border, color: theme.text },
-    tr: { borderBottomWidth: 1, borderColor: theme.border },
+    th: { padding: 8, fontWeight: '600' as const, borderRightWidth: 1, borderColor: theme.border, color: theme.text, flex: 1 },
+    td: { padding: 8, borderRightWidth: 1, borderColor: theme.border, color: theme.text, flex: 1 },
+    tr: { flexDirection: 'row' as const, borderBottomWidth: 1, borderColor: theme.border },
     paragraph: { marginVertical: 4 },
     strong: { fontWeight: '600' as const },
     em: { fontStyle: 'italic' as const },
@@ -172,18 +232,47 @@ export default function TextPart({ text, theme, isUser }: Props) {
   return (
     <>
       <TouchableOpacity onLongPress={() => setFullscreen(true)} activeOpacity={0.9}>
-        <Markdown style={style} rules={SELECTABLE_RULES}>{text}</Markdown>
+        <View>
+          {segments.map((seg, i) => {
+            const hasTable = TABLE_LIKE.test(seg)
+            return (
+              <Markdown
+                key={i}
+                style={style}
+                rules={hasTable ? SELECTABLE_RULES : { ...SELECTABLE_RULES, body: BODY_TEXT }}
+              >
+                {seg}
+              </Markdown>
+            )
+          })}
+        </View>
       </TouchableOpacity>
       <Modal visible={fullscreen} animationType="slide" onRequestClose={() => setFullscreen(false)}>
         <SafeAreaView style={[styles.modalContainer, { backgroundColor: theme.background }]}>
           <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>内容</Text>
-            <TouchableOpacity onPress={() => setFullscreen(false)} style={styles.modalClose}>
-              <Feather name="x" size={20} color={theme.text} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity onPress={handleCopy} style={styles.modalClose}>
+                <Feather name={copied ? 'check' : 'copy'} size={20} color={copied ? '#34C759' : theme.text} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setFullscreen(false)} style={styles.modalClose}>
+                <Feather name="x" size={20} color={theme.text} />
+              </TouchableOpacity>
+            </View>
           </View>
           <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
-            <Markdown style={fullscreenStyle} rules={SELECTABLE_RULES}>{text}</Markdown>
+            {segments.map((seg, i) => {
+              const hasTable = TABLE_LIKE.test(seg)
+              return (
+                <Markdown
+                  key={i}
+                  style={fullscreenStyle}
+                  rules={hasTable ? SELECTABLE_RULES : { ...SELECTABLE_RULES, body: BODY_TEXT }}
+                >
+                  {seg}
+                </Markdown>
+              )
+            })}
           </ScrollView>
         </SafeAreaView>
       </Modal>

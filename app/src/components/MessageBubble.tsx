@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View, Text, TouchableOpacity, Animated } from 'react-native'
+import { Feather } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
 import ThinkingAccordion from './ThinkingAccordion'
 import ContentRenderer from './ContentRenderer'
@@ -8,6 +9,14 @@ import FilePart from './FilePart'
 import ActionSheet from './ActionSheet'
 import type { Theme } from '../theme'
 import type { Message } from '../types'
+
+function formatTime(ts?: number): string {
+  if (!ts) return ''
+  const d = new Date(ts)
+  const h = d.getHours().toString().padStart(2, '0')
+  const m = d.getMinutes().toString().padStart(2, '0')
+  return `${h}:${m}`
+}
 
 function LoadingDots({ theme }: { theme: Theme }) {
   const opacity = useRef([0.3, 0.3, 0.3].map(() => new Animated.Value(0.3))).current
@@ -91,8 +100,13 @@ export default function MessageBubble({ message, theme, onToolPress, onRevert, w
             )}
             {!!message.text && <Text selectable style={[styles.userText, { color: theme.userBubbleText }]}>{message.text}</Text>}
           </View>
-          {copied && <Text style={[styles.copiedTip, { color: theme.textTertiary }]}>已复制 ✓</Text>}
         </TouchableOpacity>
+        <View style={[styles.footer, { justifyContent: 'flex-end' }]}>
+          <Text style={[styles.footerTime, { color: theme.textTertiary }]}>{formatTime(message.time?.created)}</Text>
+          <TouchableOpacity onPress={copyText} style={styles.footerCopy} hitSlop={8}>
+            <Feather name={copied ? 'check' : 'copy'} size={13} color={copied ? '#34C759' : theme.textTertiary} />
+          </TouchableOpacity>
+        </View>
         {renderMenu()}
       </>
     )
@@ -134,11 +148,18 @@ export default function MessageBubble({ message, theme, onToolPress, onRevert, w
                 ))}
               </View>
             )}
-            {copied && <Text style={[styles.copiedTip, { color: theme.textTertiary }]}>已复制 ✓</Text>}
-          </>
+            </>
           </View>
         )}
       </TouchableOpacity>
+      {!isLoading && (
+        <View style={styles.footer}>
+          <Text style={[styles.footerTime, { color: theme.textTertiary }]}>{formatTime(message.time?.created)}</Text>
+          <TouchableOpacity onPress={copyText} style={styles.footerCopy} hitSlop={8}>
+            <Feather name={copied ? 'check' : 'copy'} size={13} color={copied ? '#34C759' : theme.textTertiary} />
+          </TouchableOpacity>
+        </View>
+      )}
       {renderMenu()}
     </View>
   )
@@ -155,5 +176,7 @@ const styles = StyleSheet.create({
   assistantFiles: { marginTop: 4 },
   loadingBubble: { alignSelf: 'flex-start', borderRadius: 16, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 8 },
   dot: { fontSize: 20, lineHeight: 22 },
-  copiedTip: { fontSize: 11, fontWeight: '500', marginTop: 2 },
+  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2, paddingHorizontal: 4 },
+  footerTime: { fontSize: 11, fontWeight: '500' },
+  footerCopy: { padding: 4 },
 })

@@ -70,6 +70,7 @@ function parseMessages(raw: any[]): Message[] {
       return {
         id, role: 'user', text: textPart?.text || '',
         files: fileParts.map((p: any) => ({ url: p.url, mime: p.mime, filename: p.filename })),
+        time: item.info?.time,
       }
     }
     const reasoningPart = (item.parts || []).find((p: any) => p.type === 'reasoning')
@@ -94,8 +95,13 @@ function parseMessages(raw: any[]): Message[] {
         metadata: { ...(p.state?.metadata || {}), ...(p.metadata || {}) },
       })),
       files: fileParts.map((p: any) => ({ url: p.url, mime: p.mime, filename: p.filename })),
+      time: item.info?.time,
     }
   })
+}
+
+function tokenSum(t: any): number {
+  return (t?.input || 0) + (t?.output || 0) + (t?.reasoning || 0) + (t?.cache?.read || 0) + (t?.cache?.write || 0)
 }
 
 interface Props {
@@ -292,15 +298,25 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             modelID: lastAssistant.info.modelID,
           })
         }
-        if (lastAssistant?.info?.tokens) {
-          const t = lastAssistant.info.tokens
-          setContextTokens(t.input + t.output + t.reasoning + (t.cache?.read || 0) + (t.cache?.write || 0))
+
+        // Find the last completed assistant message for token display
+        const lastCompleted = (raw as any[]).findLast((item: any) => {
+          if (item.info?.role !== 'assistant') return false
+          const hasRunning = (item.parts || []).some((p: any) => p.type === 'tool' && (p.state?.status === 'running' || p.state?.status === 'pending'))
+          const t = item.info?.tokens
+          return !hasRunning && t && tokenSum(t) > 0
+        })
+        if (lastCompleted?.info?.tokens) {
+          const newTokens = tokenSum(lastCompleted.info.tokens)
+          setContextTokens(newTokens)
         }
 
-        // Infer session activity from running tool calls
+        // Infer session activity from running tool calls or incomplete messages
         const hasRunning = (raw as any[]).some((item: any) => {
           if (item.info?.role !== 'assistant') return false
-          return (item.parts || []).some((p: any) => p.type === 'tool' && (p.state?.status === 'running' || p.state?.status === 'pending'))
+          if ((item.parts || []).some((p: any) => p.type === 'tool' && (p.state?.status === 'running' || p.state?.status === 'pending'))) return true
+          if (!item.info?.finish) return true
+          return false
         })
         setSending(hasRunning)
 
@@ -582,6 +598,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                   }
                   return prev.map((m) => m.id === msgID ? { ...m, role: 'assistant', reasoning: { text: '', isActive: true }, content: m.role === 'user' ? m.text : '', toolCalls: [] } : m)
                 }
+                setSending(true)
                 const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
                 return [{ id: msgID, role: 'assistant', reasoning: { text: '', isActive: true }, content: '', toolCalls: [] }, ...filtered]
               })
@@ -635,7 +652,8 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
             if (partType === 'step-finish') {
               const t = part.tokens
-              if (t) setContextTokens(t.input + t.output + t.reasoning + (t.cache?.read || 0) + (t.cache?.write || 0))
+              if (t && tokenSum(t) > 0) setContextTokens(tokenSum(t))
+              if (part.reason === 'stop') setSending(false)
               continue
             }
 

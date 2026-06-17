@@ -45,6 +45,7 @@ export interface AssistantMsg {
   content: string
   toolCalls: ToolCall[]
   files?: { url: string; mime: string; filename?: string }[]
+  time?: { created: number }
 }
 
 export interface UserMsg {
@@ -52,6 +53,7 @@ export interface UserMsg {
   role: 'user'
   text: string
   files?: { url: string; mime: string; filename?: string }[]
+  time?: { created: number }
 }
 
 export type Message = UserMsg | AssistantMsg
