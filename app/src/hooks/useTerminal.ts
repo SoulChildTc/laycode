@@ -31,8 +31,12 @@ export function useTerminal(client: LayCodeClient, directory: string, bridgeHost
       ptyIdRef.current = pty.id
       setPtyID(pty.id)
 
+      ptyIdRef.current = pty.id
+      setPtyID(pty.id)
+
       const wsu = 'ws://' + bridgeHost + ':' + bridgePort + '/opencode-api/pty/' + pty.id + '/connect'
       setWsUrl(wsu)
+      setStatus('connected')
 
       return { ptyID: pty.id, wsUrl: wsu, ticket: token.ticket }
     } catch (err: any) {
