@@ -14,6 +14,13 @@ export interface BrowseResult {
   parent: string
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Request timed out after ' + ms + 'ms')), ms)),
+  ])
+}
+
 export class LayCodeClient {
   client: ReturnType<typeof createV1Client>
   v2: ReturnType<typeof createV2Client>
@@ -471,7 +478,7 @@ export class LayCodeClient {
 
   async createPty(directory?: string, cwd?: string, command?: string): Promise<any> {
     try {
-      const res = await this.v2.pty.create({ directory, cwd, command })
+      const res = await withTimeout(this.v2.pty.create({ directory, cwd, command }), 15000)
       return res.data as any
     } catch (err: any) {
       throw new Error(err?.message || 'PTY create failed')
@@ -516,7 +523,7 @@ export class LayCodeClient {
 
   async connectPtyToken(ptyID: string, directory: string): Promise<{ ticket: string } | null> {
     try {
-      const res = await this.v2.pty.connectToken({ ptyID, directory }, { headers: { 'x-opencode-ticket': '1' } })
+      const res = await withTimeout(this.v2.pty.connectToken({ ptyID, directory }, { headers: { 'x-opencode-ticket': '1' } }), 10000)
       return res.data as any
     } catch {
       return null
