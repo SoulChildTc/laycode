@@ -6,8 +6,8 @@ import { Feather } from '@expo/vector-icons'
 import TerminalToolbar from '../components/TerminalToolbar'
 import { useTerminal } from '../hooks/useTerminal'
 import type { LayCodeClient } from '../api/client'
-import type { ThemeMode, ServerEntry } from '../types'
-import { getTheme } from '../theme'
+import type { ServerEntry } from '../types'
+import { getTheme, type ThemeMode } from '../theme'
 
 interface Props {
   navigation: any
