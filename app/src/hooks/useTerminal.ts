@@ -21,7 +21,7 @@ export function useTerminal(client: LayCodeClient, directory: string, bridgeHost
         return null
       }
 
-      const token = await client.connectPtyToken(pty.id)
+      const token = await client.connectPtyToken(pty.id, pty.cwd)
       if (!token) {
         setErrorMessage('Failed to get WebSocket token')
         setStatus('error')
@@ -46,7 +46,7 @@ export function useTerminal(client: LayCodeClient, directory: string, bridgeHost
     const id = ptyIdRef.current
     if (id) {
       try {
-        await client.removePty(id)
+        await client.removePty(id, directory)
       } catch {}
       ptyIdRef.current = null
       setPtyID(null)
@@ -54,23 +54,23 @@ export function useTerminal(client: LayCodeClient, directory: string, bridgeHost
       setStatus('idle')
       setErrorMessage('')
     }
-  }, [client])
+  }, [client, directory])
 
   const resizePty = useCallback(async (cols: number, rows: number) => {
     const id = ptyIdRef.current
     if (id && cols > 0 && rows > 0) {
-      await client.updatePtySize(id, cols, rows)
+      await client.updatePtySize(id, cols, rows, directory)
     }
-  }, [client])
+  }, [client, directory])
 
   useEffect(() => {
     return () => {
       const id = ptyIdRef.current
       if (id) {
-        client.removePty(id).catch(() => {})
+        client.removePty(id, directory).catch(() => {})
       }
     }
-  }, [client])
+  }, [client, directory])
 
   return { ptyID, status, wsUrl, errorMessage, createPty, destroyPty, resizePty, setStatus }
 }

@@ -496,27 +496,27 @@ export class LayCodeClient {
     }
   }
 
-  async removePty(ptyID: string): Promise<boolean> {
+  async removePty(ptyID: string, directory?: string): Promise<boolean> {
     try {
-      await this.v2.pty.remove({ ptyID })
+      await this.v2.pty.remove({ ptyID, directory })
       return true
     } catch {
       return false
     }
   }
 
-  async updatePtySize(ptyID: string, cols: number, rows: number): Promise<boolean> {
+  async updatePtySize(ptyID: string, cols: number, rows: number, directory?: string): Promise<boolean> {
     try {
-      await this.v2.pty.update({ ptyID, size: { cols, rows } })
+      await this.v2.pty.update({ ptyID, size: { cols, rows }, directory })
       return true
     } catch {
       return false
     }
   }
 
-  async connectPtyToken(ptyID: string): Promise<{ ticket: string } | null> {
+  async connectPtyToken(ptyID: string, directory: string): Promise<{ ticket: string } | null> {
     try {
-      const res = await this.v2.pty.connectToken({ ptyID })
+      const res = await this.v2.pty.connectToken({ ptyID, directory })
       return res.data as any
     } catch {
       return null
