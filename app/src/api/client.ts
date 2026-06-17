@@ -516,7 +516,7 @@ export class LayCodeClient {
 
   async connectPtyToken(ptyID: string, directory: string): Promise<{ ticket: string } | null> {
     try {
-      const res = await this.v2.pty.connectToken({ ptyID, directory })
+      const res = await this.v2.pty.connectToken({ ptyID, directory }, { headers: { 'x-opencode-ticket': '1' } })
       return res.data as any
     } catch {
       return null
