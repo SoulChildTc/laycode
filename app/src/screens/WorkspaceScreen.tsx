@@ -230,7 +230,9 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
             <View style={{ flex: 1 }}>
               <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{name}</Text>
             </View>
-            <View style={{ width: 32 }} />
+            <TouchableOpacity onPress={() => navigation.push('TerminalList', { directory })} hitSlop={10} style={{ padding: 4 }}>
+              <Feather name="terminal" size={20} color={theme.accent} />
+            </TouchableOpacity>
           </>
         )}
       </View>

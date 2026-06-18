@@ -494,9 +494,9 @@ export class LayCodeClient {
     }
   }
 
-  async getPty(ptyID: string): Promise<any> {
+  async getPty(ptyID: string, directory?: string): Promise<any> {
     try {
-      const res = await this.v2.pty.get({ ptyID })
+      const res = await this.v2.pty.get({ ptyID, directory })
       return res.data as any
     } catch {
       return null
