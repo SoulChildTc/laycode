@@ -99,9 +99,17 @@ function init() {
     }
   })
 
-  window.addEventListener('resize', function() {
-    try { fitAddon.fit() } catch(e) {}
-  })
+  function doFit() {
+    try {
+      fitAddon.fit()
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+      }
+    } catch(e) {}
+  }
+  setTimeout(doFit, 500)
+  try { var ro = new ResizeObserver(doFit); ro.observe(document.getElementById('terminal')) } catch(e) {}
+  window.addEventListener('resize', doFit)
 
   window.addEventListener('message', function(ev) {
     try {
