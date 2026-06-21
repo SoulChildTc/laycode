@@ -12,6 +12,17 @@
       "android": {
         "buildType": "apk"
       }
+    },
+    "production-google": {
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
+    "production-china": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
     }
   }
 }

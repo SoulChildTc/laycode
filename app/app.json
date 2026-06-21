@@ -48,7 +48,8 @@
           "cameraPermission": "LayCode needs camera access so you can take photos and send them to the AI.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {
