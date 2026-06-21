@@ -118,6 +118,8 @@ const PAGE_SIZE = 10
 export default function SessionScreen({ route, navigation, themeMode, client, config }: Props) {
   const { sessionId, title: routeTitle, agents: agentsJson, defaultAgent, agent: routeAgent } = route.params || {}
   const agentsFromParent = useMemo<Agent[]>(() => agentsJson ? JSON.parse(agentsJson) : [], [agentsJson])
+  const [fallbackAgents, setFallbackAgents] = useState<Agent[]>([])
+  const fallbackAgentsLoadedRef = useRef(false)
   const theme = getTheme(themeMode)
   const [messages, setMessages] = useState<ListItem[]>([])
   const [sessionTitle, setSessionTitle] = useState(routeTitle || sessionId?.slice(0, 8) || '')
@@ -147,8 +149,10 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [childSessions, setChildSessions] = useState<{ id: string; title: string; agent: string }[]>([])
   const [showChildSessions, setShowChildSessions] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  const loadingMoreRef = useRef(false)
   const cursorRef = useRef<string | null>(null)
   const initialLoadDoneRef = useRef(false)
+  const loadGenRef = useRef(0)
   const [fabMenuVisible, setFabMenuVisible] = useState(false)
   const fabPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current
   const fabDrag = useRef({ x: 0, y: 0 })
@@ -165,7 +169,27 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const scrollButtonOpacity = useRef(new Animated.Value(0)).current
   const { keyboardOffset, isKeyboardOpen } = useKeyboardHeight()
   const sessionModelKey = storageKey(config.id, 'session-models')
-  const { agents: availableAgents, currentAgent, setAgent: setCurrentAgent } = useAgents(agentsFromParent, sessionId, defaultAgent, config.id)
+  const effectiveAgents = agentsFromParent.length > 0 ? agentsFromParent : fallbackAgents
+  const { agents: availableAgents, currentAgent, setAgent: setCurrentAgent } = useAgents(effectiveAgents, sessionId, defaultAgent, config.id)
+
+  useEffect(() => {
+    if (agentsFromParent.length > 0) return
+    if (fallbackAgentsLoadedRef.current) return
+    if (!cwd) return
+    fallbackAgentsLoadedRef.current = true
+    client.getAgents(cwd).then((list) => {
+      const filtered = list.filter((a) => a.mode !== 'subagent' && !a.hidden)
+      if (filtered.length > 0) {
+        setFallbackAgents(filtered)
+      } else {
+        client.getAgents().then((list2) => {
+          setFallbackAgents(list2.filter((a) => a.mode !== 'subagent' && !a.hidden))
+        }).catch(() => {})
+      }
+    }).catch(() => {
+      fallbackAgentsLoadedRef.current = false
+    })
+  }, [agentsFromParent, cwd, client])
 
   useEffect(() => {
     AsyncStorage.getItem(fabPositionKey).then((raw) => {
@@ -256,6 +280,9 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
   const reloadSession = async () => {
     if (!sessionId) return
+
+    loadGenRef.current++
+    loadingMoreRef.current = false
 
     try {
       const [sessionData, pageResult, providersRes] = await Promise.all([
@@ -374,20 +401,30 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   }
 
   const handleLoadMore = useCallback(async () => {
-    if (!cursorRef.current || loadingMore || !initialLoadDoneRef.current || !sessionId) return
+    if (!cursorRef.current || loadingMoreRef.current || !initialLoadDoneRef.current || !sessionId) return
+    loadingMoreRef.current = true
     setLoadingMore(true)
+    const gen = loadGenRef.current
     try {
       const { messages: raw, nextCursor } = await client.getMessagesPage(sessionId, PAGE_SIZE, cursorRef.current, cwd || undefined)
+      if (gen !== loadGenRef.current) return
       cursorRef.current = nextCursor
       if (raw.length > 0) {
-        const older = parseMessages(raw)
-        setMessages((prev) => [...prev, ...older])
+        const older = parseMessages(raw).reverse()
+        setMessages((prev) => {
+          const existing = new Set(prev.map((m) => m.id))
+          const fresh = older.filter((m) => !existing.has(m.id))
+          return [...prev, ...fresh]
+        })
       }
     } catch {
     } finally {
-      setLoadingMore(false)
+      if (gen === loadGenRef.current) {
+        loadingMoreRef.current = false
+        setLoadingMore(false)
+      }
     }
-  }, [loadingMore, sessionId, client, cwd])
+  }, [sessionId, client, cwd])
 
   useEffect(() => {
     if (sessionId) reloadSession()
