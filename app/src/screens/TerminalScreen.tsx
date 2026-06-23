@@ -208,6 +208,281 @@ function terminalKeystroke(data: string) {
   if (terminalPaste) terminalPaste(data)
 }
 
+function buildTerminalHtml(
+  baseUrl: string,
+  wsUrl: string,
+  ticket: string,
+  directory: string,
+): string {
+  const dirParam = directory ? '&directory=' + encodeURIComponent(directory) : ''
+  const fullWsUrl = wsUrl + '?ticket=' + ticket + '&cursor=0' + dirParam
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <link rel="stylesheet" href="${baseUrl}/xterm.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      background: #0f0f1a;
+      overflow: hidden;
+    }
+
+    #t {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    .xterm {
+      height: 100% !important;
+      width: 100% !important;
+      cursor: text;
+      position: relative;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: pan-y;
+      -webkit-touch-callout: none;
+    }
+    .xterm.focus, .xterm:focus { outline: none; }
+
+    .xterm .xterm-viewport {
+      background-color: #0f0f1a;
+      overflow-y: scroll;
+      cursor: default;
+      position: absolute;
+      right: 0;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      touch-action: pan-y;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+    }
+
+    .xterm .xterm-screen {
+      pointer-events: none;
+    }
+
+    .xterm .xterm-helper-textarea {
+      padding: 0;
+      border: 0;
+      margin: 0;
+      position: absolute;
+      opacity: 0;
+      left: -9999em;
+      top: 0;
+      width: 0;
+      height: 0;
+      z-index: -5;
+      white-space: nowrap;
+      overflow: hidden;
+      resize: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="t"></div>
+
+  <script src="${baseUrl}/xterm.js"></script>
+  <script src="${baseUrl}/xterm-addon-fit.js"></script>
+
+  <script>
+    var fontsReady = false;
+    var pageLoaded = false;
+
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(function() {
+        fontsReady = true;
+        tryInit();
+      });
+    } else {
+      fontsReady = true;
+    }
+
+    window.addEventListener('load', function() {
+      pageLoaded = true;
+      tryInit();
+    });
+
+    function tryInit() {
+      if (fontsReady && pageLoaded) {
+        init();
+      }
+    }
+
+    function init() {
+      try {
+        var container = document.getElementById('t');
+        var cw = container.clientWidth;
+        var ch = container.clientHeight;
+
+        var term = new Terminal({
+          cursorBlink: true,
+          cursorStyle: 'bar',
+          fontSize: 14,
+          fontFamily: 'Menlo, Monaco, Courier New, monospace',
+          allowTransparency: false,
+          scrollback: 5000,
+          drawBoldTextInBrightColors: false,
+          rendererType: 'dom',
+          theme: {
+            background: '#0f0f1a',
+            foreground: '#e8e8f0',
+            cursor: '#e8e8f0',
+            selectionBackground: '#6c7dff44',
+          },
+          cols: Math.floor(cw / 9) || 80,
+          rows: Math.floor(ch / 20) || 24,
+        });
+
+        var fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        term.open(container);
+
+        // --- 移动端滚动修复 ---
+        // viewport 已通过 CSS z-index:10 置于最上层，浏览器原生处理滚动
+        // 这里只需阻止事件冒泡到 xterm 的内部触摸处理器（它会把手势转成按行滚动）
+        var vp = container.querySelector('.xterm-viewport');
+        if (vp) {
+          var tapFlag = true;
+
+          vp.addEventListener('touchstart', function(e) {
+            tapFlag = true;
+            e.stopPropagation();
+          }, { passive: true });
+
+          vp.addEventListener('touchmove', function(e) {
+            tapFlag = false;
+            e.stopPropagation();
+          }, { passive: true });
+
+          vp.addEventListener('touchend', function(e) {
+            e.stopPropagation();
+            if (tapFlag) term.focus();
+          }, { passive: true });
+        }
+
+        // --- 智能自动滚动 ---
+        var autoScroll = true;
+
+        function isAtBottom() {
+          var viewport = container.querySelector('.xterm-viewport');
+          if (!viewport) return true;
+          return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 30;
+        }
+
+        function scrollToBottomIfNeeded() {
+          if (autoScroll || isAtBottom()) {
+            term.scrollToBottom();
+            autoScroll = true;
+          }
+        }
+
+        term.onScroll(function() {
+          autoScroll = isAtBottom();
+        });
+
+        // --- 尺寸适配 ---
+        function doFit() {
+          try {
+            fitAddon.fit();
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'resize',
+              cols: term.cols,
+              rows: term.rows,
+              clientW: container.clientWidth,
+              clientH: container.clientHeight,
+            }));
+          } catch (e) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'log',
+              message: 'fit err: ' + e.message,
+            }));
+          }
+        }
+
+        function fitLoop(count) {
+          count = count || 0;
+          if (count < 10) {
+            doFit();
+            setTimeout(function() { fitLoop(count + 1) }, count === 0 ? 50 : count * 100);
+          }
+        }
+        fitLoop();
+
+        try {
+          var ro = new ResizeObserver(doFit);
+          ro.observe(container);
+        } catch (e) {}
+
+        window.addEventListener('resize', doFit);
+
+        // --- 暴露给 RN 层的接口 ---
+        window.__term = term;
+        window.__doFit = doFit;
+
+        // --- 连接 PTY ---
+        var ws = new WebSocket(${JSON.stringify(fullWsUrl)});
+        window.__ws = ws;
+
+        ws.onopen = function() {
+          term.focus();
+          doFit();
+        };
+
+        ws.onmessage = function(e) {
+          if (e.data instanceof Blob) {
+            e.data.arrayBuffer().then(function(b) {
+              var u8 = new Uint8Array(b);
+              if (u8[0] === 0) return;
+              term.write(new Uint8Array(b));
+              scrollToBottomIfNeeded();
+            });
+            return;
+          }
+          term.write(e.data);
+          scrollToBottomIfNeeded();
+        };
+
+        ws.onclose = function(e) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'ws-close',
+            code: e.code,
+          }));
+        };
+
+        ws.onerror = function() {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ws-error' }));
+        };
+
+        term.onData(function(data) {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(data);
+          }
+        });
+
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'log',
+          message: 'xterm ready, w:' + cw + ' h:' + ch + ' cols:' + term.cols + ' rows:' + term.rows,
+        }));
+      } catch (e) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'log',
+          message: 'init error: ' + e.message,
+        }));
+      }
+    }
+  </script>
+</body>
+</html>`
+}
+
 function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited, bridgeHost, bridgePort }: any) {
   var ref = useRef<any>(null)
   var WebView = require('react-native-webview').WebView
@@ -215,24 +490,32 @@ function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited
 
   useEffect(function() {
     terminalPaste = function(data: string) {
-      ref.current?.injectJavaScript("try{window.__ws&&window.__ws.send(" + JSON.stringify(data) + ")}catch(e){};true")
+      ref.current?.injectJavaScript(
+        "try{window.__ws&&window.__ws.send(" + JSON.stringify(data) + ")}catch(e){};true"
+      )
+    }
+    return function() {
+      terminalPaste = null
     }
   }, [])
 
   var html = useMemo(function() {
-    if (!wsUrl || !ticket) return '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="background:#0f0f1a"></body></html>'
-    var dirParam = directory ? '&directory=' + encodeURIComponent(directory) : ''
-    return '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>body{margin:0;padding:0;background:#0f0f1a;overflow:hidden}#t{width:100vw;height:100vh}.xterm-helper-textarea{position:absolute!important;bottom:0!important;left:0!important;width:1px!important;height:1px!important;opacity:0!important;z-index:10!important}#t *{-webkit-user-select:text!important;user-select:text!important}</style></head><body><div id="t"></div><script src="' + baseUrl + '/xterm.js"></script><script src="' + baseUrl + '/xterm-addon-fit.js"></script><script>try{var t=new Terminal({cursorBlink:true,cursorStyle:"bar",fontSize:14,fontFamily:"Menlo,Monaco,Courier New,monospace",letterSpacing:0,lineHeight:1.1,convertEol:true,allowTransparency:false,theme:{background:"#0f0f1a",foreground:"#e8e8f0",cursor:"#e8e8f0",selectionBackground:"#6c7dff44"},cols:80,rows:24});var a=new FitAddon.FitAddon();t.loadAddon(a);t.open(document.getElementById("t"));function doFit(){try{a.fit();t.scrollToBottom();window.ReactNativeWebView.postMessage(JSON.stringify({type:"resize",cols:t.cols,rows:t.rows}))}catch(e){}}setTimeout(doFit,500);window.__t=t;try{var ro=new ResizeObserver(doFit);ro.observe(document.getElementById("t"))}catch(e){}window.addEventListener("resize",doFit);window.ReactNativeWebView.postMessage(JSON.stringify({type:"log",message:"xterm ready"}));setTimeout(function(){setInterval(function(){try{var l=[];for(var i=Math.max(0,t.buffer.active.length-8);i<t.buffer.active.length;i++){var r=t.buffer.active.getLine(i);if(r)l.push(r.translateToString())}window.ReactNativeWebView.postMessage(JSON.stringify({type:"snapshot",lines:l,count:l.filter(function(x){return x.trim()}).length}))}catch(e){window.ReactNativeWebView.postMessage(JSON.stringify({type:"log",message:"snap err: "+e.message}))}},1000)},3000);var ws=new WebSocket("' + wsUrl + '?ticket=' + ticket + '&cursor=0' + dirParam + '");window.__ws=ws;ws.onopen=function(){t.focus()};ws.onmessage=function(e){if(e.data instanceof Blob){e.data.arrayBuffer().then(function(b){var u8=new Uint8Array(b);if(u8[0]===0)return;t.write(new Uint8Array(b));t.scrollToBottom()});return}t.write(e.data);t.scrollToBottom()};ws.onclose=function(e){window.ReactNativeWebView.postMessage(JSON.stringify({type:"ws-close",code:e.code}))};ws.onerror=function(){window.ReactNativeWebView.postMessage(JSON.stringify({type:"ws-error"}))};t.onData(function(d){if(ws.readyState===WebSocket.OPEN)ws.send(d)});}catch(e){window.ReactNativeWebView.postMessage(JSON.stringify({type:"log",message:"init error: "+e.message}))}</script></body></html>'
+    if (!wsUrl || !ticket) {
+      return '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="background:#0f0f1a"></body></html>'
+    }
+    return buildTerminalHtml(baseUrl, wsUrl, ticket, directory)
   }, [wsUrl, ticket, directory, baseUrl])
 
   var handleMessage = useCallback(function(event: any) {
     try {
       var msg = JSON.parse(event.nativeEvent.data)
-      if (msg.type === 'ws-close') setExited(true)
-      else if (msg.type === 'resize' && msg.cols && msg.rows) {
+      if (msg.type === 'ws-close') {
+        setExited(true)
+      } else if (msg.type === 'resize' && msg.cols && msg.rows) {
         resize(msg.cols, msg.rows)
+      } else if (msg.type === 'log') {
+        console.log('[WebView]', msg.message)
       }
-      else if (msg.type === 'log') console.log('[WebView]', msg.message)
     } catch {}
   }, [setExited, resize])
 
@@ -244,6 +527,10 @@ function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited
     }
   }, [resize])
 
+  var handleLoad = useCallback(function() {
+    ref.current?.injectJavaScript("try{window.__doFit&&window.__doFit()}catch(e){};true;")
+  }, [])
+
   return (
     <View style={{ flex: 1 }} onLayout={handleLayout}>
       <WebView
@@ -251,16 +538,18 @@ function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited
         source={{ html: html || '<html><body style="background:#0f0f1a"></body></html>' }}
         style={{ flex: 1, backgroundColor: '#0f0f1a' }}
         onMessage={handleMessage}
+        onLoad={handleLoad}
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled
-        scrollEnabled={false}
+        scrollEnabled={true}
         bounces={false}
         overScrollMode="never"
         hideKeyboardAccessoryView={false}
         keyboardDisplayRequiresUserAction={false}
         setSupportMultipleWindows={false}
-        textInteractionEnabled={false}
+        textInteractionEnabled={true}
+        allowsLinkPreview={false}
         allowFileAccess={true}
         mixedContentMode="always"
         androidLayerType="hardware"
@@ -306,7 +595,7 @@ function TerminalViewWeb({ wsUrl, ticket, directory, ptyID, resize, setExited }:
         term.loadAddon(fitAddon)
         term.open(divRef.current)
         fitAddon.fit()
-        
+
         terminalPaste = function(data: string) { term.paste(data) }
 
         var dirParam = directory ? '&directory=' + encodeURIComponent(directory) : ''
