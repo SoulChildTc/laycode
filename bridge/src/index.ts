@@ -280,6 +280,18 @@ const server = app.listen(config.port, async () => {
   }
 })
 
+// 监听失败（最常见是端口被占 EADDRINUSE）：listen 不会走成功回调，而是发 error 事件。
+// 必须显式处理，否则服务静默崩溃，而 start 侧健康检查可能被占用端口的旧进程“冒名”响应，误报启动成功。
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`  启动失败：端口 ${config.port} 已被占用。`)
+    console.error(`  请停止占用该端口的进程，或用 --port <其它端口> 启动。`)
+  } else {
+    console.error(`  启动失败：${err.message}`)
+  }
+  process.exit(1)
+})
+
 // WebSocket upgrade routing (single port): 事件流 WS + PTY 代理 WS 共用主 server
 // 跟踪 PTY 代理的活跃 socket（客户端侧 + opencode 侧），shutdown 时统一销毁，
 // 否则这些裸 socket 会吊住事件循环、进程无法退出。
