@@ -28,8 +28,8 @@ export default function ConnectScreen({ themeMode, onConnect }: Props) {
       if (raw) {
         const last = servers.find((s) => s.id === raw)
         if (last) {
-          const ok = await connect(last)
-          if (ok) { onConnect(last); return }
+          const result = await connect(last)
+          if (result === 'ok') { onConnect(last); return }
         }
       }
     } catch {}

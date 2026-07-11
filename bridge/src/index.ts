@@ -190,8 +190,15 @@ app.post('/api/v1/git/discard', requireAuth, (req, res) => {
 app.use('/opencode-api', createProxyHandler(config))
 
 // Custom API for future extensions
+// /health 不鉴权：仅用于探活（mDNS 发现、进程存活检查）。能连上 != 有权限。
 app.get('/api/v1/health', (_req, res) => {
   res.json({ status: 'ok', version: getVersion() })
+})
+
+// /auth/verify 鉴权：连接时用它确认 token 有效。200=token 正确，401=token 错误，网络失败=离线。
+// 这是「已连接」的唯一可信判据，不能用 /health 代替。
+app.get('/api/v1/auth/verify', requireAuth, (_req, res) => {
+  res.json({ ok: true, version: getVersion() })
 })
 
 // Restart opencode (auth-protected)

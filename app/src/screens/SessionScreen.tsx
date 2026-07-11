@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { LayCodeClient } from '../api/client'
+import { useToast } from '../contexts/ToastContext'
 import { getTheme, ThemeMode } from '../theme'
 import MessageBubble from '../components/MessageBubble'
 import InputBar from '../components/InputBar'
@@ -121,6 +122,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [fallbackAgents, setFallbackAgents] = useState<Agent[]>([])
   const fallbackAgentsLoadedRef = useRef(false)
   const theme = getTheme(themeMode)
+  const toast = useToast()
   const [messages, setMessages] = useState<ListItem[]>([])
   const [sessionTitle, setSessionTitle] = useState(routeTitle || sessionId?.slice(0, 8) || '')
   const [cwd, setCwd] = useState('')
@@ -256,25 +258,34 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
     setPendingPermissions((prev) => prev.filter((p) => p.id !== req.id))
 
-    const ok = await client.replyPermission(req.id, reply, message, cwd || undefined)
-    if (!ok) setError('Failed to respond to permission request')
-  }, [pendingPermissions, client, cwd])
+    try {
+      await client.replyPermission(req.id, reply, message, cwd || undefined)
+    } catch (e: any) {
+      toast.error(e?.message || '响应权限请求失败')
+    }
+  }, [pendingPermissions, client, cwd, toast])
 
   const handleQuestionReply = useCallback(async (answers: string[][]) => {
     const req = pendingQuestions[0]
     if (!req) return
     setPendingQuestions((prev) => prev.filter((q) => q.id !== req.id))
-    const ok = await client.replyQuestion(req.id, answers, cwd || undefined)
-    if (!ok) setError('Failed to reply to question')
-  }, [pendingQuestions, client, cwd])
+    try {
+      await client.replyQuestion(req.id, answers, cwd || undefined)
+    } catch (e: any) {
+      toast.error(e?.message || '回复提问失败')
+    }
+  }, [pendingQuestions, client, cwd, toast])
 
   const handleQuestionReject = useCallback(async () => {
     const req = pendingQuestions[0]
     if (!req) return
     setPendingQuestions((prev) => prev.filter((q) => q.id !== req.id))
-    const ok = await client.rejectQuestion(req.id, cwd || undefined)
-    if (!ok) setError('Failed to reject question')
-  }, [pendingQuestions, client, cwd])
+    try {
+      await client.rejectQuestion(req.id, cwd || undefined)
+    } catch (e: any) {
+      toast.error(e?.message || '拒绝提问失败')
+    }
+  }, [pendingQuestions, client, cwd, toast])
 
   const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
 
@@ -880,7 +891,13 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   }, [showScrollButton, scrollButtonOpacity])
 
   const handleRevert = useCallback(async (revertMessageId: string) => {
-    const sessionData = await client.revertMessage(sessionId, revertMessageId, cwd)
+    let sessionData: any
+    try {
+      sessionData = await client.revertMessage(sessionId, revertMessageId, cwd)
+    } catch (e: any) {
+      toast.error(e?.message || '回退失败')
+      return
+    }
     if (sessionData?.revert) {
       setSending(false)
       setError(null)
@@ -901,11 +918,11 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
         setMessages(m.reverse())
       }
     }
-  }, [client, sessionId, cwd])
+  }, [client, sessionId, cwd, toast])
 
   const handleUnrevert = useCallback(async () => {
-    const ok = await client.unrevertMessage(sessionId, cwd)
-    if (ok) {
+    try {
+      await client.unrevertMessage(sessionId, cwd)
       setRevertMessageId(null)
       setRevertDiff(null)
       setError(null)
@@ -913,13 +930,19 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       const raw = await client.getMessages(sessionId)
       const m: Message[] = parseMessages(raw)
       setMessages(m.reverse())
+    } catch (e: any) {
+      toast.error(e?.message || '撤销回退失败')
     }
-  }, [client, sessionId, cwd])
+  }, [client, sessionId, cwd, toast])
 
   const handleAbort = useCallback(async () => {
     setSending(false)
-    await client.abortSession(sessionId, cwd)
-  }, [client, sessionId, cwd])
+    try {
+      await client.abortSession(sessionId, cwd)
+    } catch (e: any) {
+      toast.error(e?.message || '中止失败')
+    }
+  }, [client, sessionId, cwd, toast])
 
   const handleSend = useCallback(async () => {
     if (!canSendMessage(input, attachments) || sending || !sessionId) return

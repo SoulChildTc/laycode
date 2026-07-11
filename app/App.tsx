@@ -6,7 +6,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import RootNavigator from './src/navigation/RootNavigator'
 import ErrorBoundary from './src/components/ErrorBoundary'
 import { ServersProvider } from './src/contexts/ServersContext'
-import { LayCodeClient } from './src/api/client'
+import { ToastProvider, toast } from './src/contexts/ToastContext'
+import { LayCodeClient, setGlobalErrorHandler } from './src/api/client'
 import { ThemeMode } from './src/theme'
 import { ServerConfig, ServerEntry } from './src/types'
 
@@ -27,6 +28,13 @@ export default function App() {
     }).catch(() => setThemeLoaded(true))
   }, [])
 
+  // 全局错误提示：会话失效（401）与连不上 bridge（网络失败/超时）都在此统一弹提示。
+  // 按产品选择只提示、不自动跳回连接页。并发失败由 Toast 层去重成一条。
+  useEffect(() => {
+    setGlobalErrorHandler((err) => toast(err.message, 'error'))
+    return () => setGlobalErrorHandler(null)
+  }, [])
+
   const handleThemeToggle = () => {
     setThemeMode((prev) => {
       const next = prev === 'dark' ? 'light' : 'dark'
@@ -42,25 +50,27 @@ export default function App() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
-          <ServersProvider>
-            <RootNavigator
-              screenProps={{
-                themeMode,
-                client,
-                config,
-                onConnect: (cfg: ServerEntry) => {
-                  setConfig(cfg)
-                  setClient(new LayCodeClient(cfg))
-                },
-                onThemeToggle: handleThemeToggle,
-                onDisconnect: async () => {
-                  setClient(null)
-                  setConfig(null)
-                  await AsyncStorage.removeItem('@laycode/last-server-id')
-                },
-              }}
-            />
-          </ServersProvider>
+          <ToastProvider themeMode={themeMode}>
+            <ServersProvider>
+              <RootNavigator
+                screenProps={{
+                  themeMode,
+                  client,
+                  config,
+                  onConnect: (cfg: ServerEntry) => {
+                    setConfig(cfg)
+                    setClient(new LayCodeClient(cfg))
+                  },
+                  onThemeToggle: handleThemeToggle,
+                  onDisconnect: async () => {
+                    setClient(null)
+                    setConfig(null)
+                    await AsyncStorage.removeItem('@laycode/last-server-id')
+                  },
+                }}
+              />
+            </ServersProvider>
+          </ToastProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
     </ErrorBoundary>

@@ -42,11 +42,15 @@ export default function ServerManager({ theme, variant, currentId, onConnected, 
     setError('')
     cancelledRef.current = false
     setConnecting(true)
-    const ok = await test(entry)
+    const result = await test(entry)
     if (cancelledRef.current) { setConnecting(false); return }
-    if (!ok) {
+    if (result !== 'ok') {
       setConnecting(false)
-      setError(`无法连接 ${entry.name || entry.host}，请确认电脑端 laycode-cli 正在运行且在同一网络`)
+      setError(
+        result === 'unauthorized'
+          ? `Token 无效，请核对电脑端 laycode-cli 启动信息里的 token`
+          : `无法连接 ${entry.name || entry.host}，请确认电脑端 laycode-cli 正在运行且在同一网络`
+      )
       return
     }
     const { server } = await add(entry)

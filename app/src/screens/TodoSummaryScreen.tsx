@@ -12,6 +12,7 @@ import { Swipeable } from 'react-native-gesture-handler'
 import { Feather } from '@expo/vector-icons'
 import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient } from '../api/client'
+import { useToast } from '../contexts/ToastContext'
 import { Todo, ServerEntry } from '../types'
 import { storageKey } from '../utils/storage'
 import { InputModal, InputField, MetaRow } from '../components/InputModal'
@@ -84,6 +85,7 @@ const chkStyle = StyleSheet.create({
 
 export default function TodoSummaryScreen({ navigation, client, themeMode, config }: Props) {
   const theme = getTheme(themeMode)
+  const notify = useToast()
   const [groups, setGroups] = useState<Group[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -147,10 +149,11 @@ export default function TodoSummaryScreen({ navigation, client, themeMode, confi
     )
     try {
       await client.updateTodo(group.workspace.path, todo.id, { done: !todo.done })
-    } catch {
+    } catch (e: any) {
       updateGroupTodos(group.workspace.path, todos =>
         todos.map(t => t.id === todo.id ? original : t)
       )
+      notify.error(e?.message || '更新任务失败')
     }
   }
 
@@ -161,13 +164,15 @@ export default function TodoSummaryScreen({ navigation, client, themeMode, confi
     )
     try {
       await client.updateTodo(group.workspace.path, todo.id, { urgent: !todo.urgent })
-    } catch {}
+    } catch (e: any) {
+      notify.error(e?.message || '更新任务失败')
+    }
   }
 
   const handleDelete = async (id: string, path: string) => {
     LayoutAnimation.configureNext(animCfg)
     updateGroupTodos(path, todos => todos.filter(t => t.id !== id))
-    try { await client.deleteTodo(path, id) } catch {}
+    try { await client.deleteTodo(path, id) } catch (e: any) { notify.error(e?.message || '删除任务失败') }
   }
 
   const handleCopy = async (text: string) => {
@@ -205,9 +210,10 @@ export default function TodoSummaryScreen({ navigation, client, themeMode, confi
 
     const createOne = async (text: string) => {
       try {
-        const todo = await client.createTodo(path, text)
-        if (todo) return todo
-      } catch {}
+        return await client.createTodo(path, text)
+      } catch (e: any) {
+        notify.error(e?.message || '创建任务失败')
+      }
       return null
     }
 
@@ -243,7 +249,7 @@ export default function TodoSummaryScreen({ navigation, client, themeMode, confi
     } else {
       LayoutAnimation.configureNext(animCfg)
       updateGroupTodos(path, todos => todos.map(t => t.id === id ? { ...t, text: trimmed } : t))
-      try { await client.updateTodo(path, id!, { text: trimmed }) } catch {}
+      try { await client.updateTodo(path, id!, { text: trimmed }) } catch (e: any) { notify.error(e?.message || '更新任务失败') }
     }
   }
 

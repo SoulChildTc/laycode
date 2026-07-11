@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Feather } from '@expo/vector-icons'
 import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient, BrowseEntry } from '../api/client'
+import { useToast } from '../contexts/ToastContext'
 import { ServerEntry } from '../types'
 import { storageKey } from '../utils/storage'
 import { InputModal, InputField, MetaRow } from '../components/InputModal'
@@ -30,6 +31,7 @@ function pathSegments(fullPath: string): { label: string; path: string }[] {
 
 export default function BrowseWorkspaceScreen({ navigation, client, themeMode, config }: Props) {
   const theme = getTheme(themeMode)
+  const toast = useToast()
   const key = storageKey(config.id, 'workspaces')
   const [current, setCurrent] = useState('')
   const [entries, setEntries] = useState<BrowseEntry[]>([])
@@ -45,7 +47,9 @@ export default function BrowseWorkspaceScreen({ navigation, client, themeMode, c
       const result = await client.browse(filePath)
       setEntries(result.entries)
       setCurrent(result.current)
-    } catch {}
+    } catch (e: any) {
+      toast.error(e?.message || '无法读取目录，请检查连接')
+    }
     setLoading(false)
   }
 
@@ -72,7 +76,9 @@ export default function BrowseWorkspaceScreen({ navigation, client, themeMode, c
       setShowNewFolder(false)
       setFolderName('')
       load(current)
-    } catch {}
+    } catch (e: any) {
+      toast.error(e?.message || '创建文件夹失败')
+    }
     setCreating(false)
   }
 
