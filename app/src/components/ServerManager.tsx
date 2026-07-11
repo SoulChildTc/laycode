@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, Alert } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import type { Theme } from '../theme'
 import { ServerEntry } from '../types'
@@ -81,7 +81,11 @@ export default function ServerManager({ theme, variant, currentId, onConnected, 
 
   const handleScanned = (info: PairingInfo) => {
     setScannerVisible(false)
-    runConnect({ name: info.name || info.host, host: info.host, port: info.port, token: info.token })
+    // 等 QRScanner（原生全屏 Modal）关闭动画跑完再启动连接，确保相机 Modal 从原生层干净卸载。
+    // 连接覆盖层本身已改为普通 View，切屏无残留。
+    setTimeout(() => {
+      runConnect({ name: info.name || info.host, host: info.host, port: info.port, token: info.token })
+    }, 300)
   }
 
   const handleSelectBridge = (b: DiscoveredBridge) => {
@@ -221,8 +225,11 @@ export default function ServerManager({ theme, variant, currentId, onConnected, 
 
       <QRScanner visible={scannerVisible} theme={theme} onClose={() => setScannerVisible(false)} onScanned={handleScanned} />
 
-      <Modal visible={connecting} transparent animationType="fade" onRequestClose={cancelConnect}>
-        <View style={styles.connOverlay}>
+      {/* 连接中覆盖层：用普通 absoluteFill View 而非原生 Modal。
+          连接成功后本屏（Connect）会被导航整个卸载切到 Main，iOS 上原生 Modal 在宿主卸载时
+          可能残留一层拦截触摸的透明视图（表现为“扫码后点哪都点不动”）。普通 View 随组件树干净卸载，无此问题。 */}
+      {connecting && (
+        <View style={styles.connOverlay} pointerEvents="auto">
           <View style={[styles.connCard, { backgroundColor: theme.surface }]}>
             <ActivityIndicator size="large" color={theme.accent} />
             <Text style={[styles.connText, { color: theme.text }]}>正在连接...</Text>
@@ -231,7 +238,7 @@ export default function ServerManager({ theme, variant, currentId, onConnected, 
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      )}
     </View>
   )
 }
@@ -266,7 +273,7 @@ const styles = StyleSheet.create({
   button: { height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 18 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   error: { color: '#f87171', fontSize: 13, marginTop: 10, paddingHorizontal: 4 },
-  connOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
+  connOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 100 },
   connCard: { width: 220, borderRadius: 16, paddingVertical: 28, paddingHorizontal: 20, alignItems: 'center', gap: 16 },
   connText: { fontSize: 15, fontWeight: '500' },
   connCancel: { paddingVertical: 8, paddingHorizontal: 24, borderRadius: 10, borderWidth: 1 },

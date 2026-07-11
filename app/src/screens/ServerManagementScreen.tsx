@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { getTheme, ThemeMode } from '../theme'
@@ -25,15 +25,21 @@ export default function ServerManagementScreen({ navigation, themeMode, config, 
         <Text style={[styles.title, { color: theme.text }]}>服务器管理</Text>
         <View style={{ width: 32 }} />
       </View>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        <ServerManager
-          theme={theme}
-          variant="manage"
-          currentId={config?.id ?? null}
-          onConnected={onConnect}
-          onDisconnectCurrent={onDisconnect}
-        />
-      </ScrollView>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 48 : 0}
+      >
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <ServerManager
+            theme={theme}
+            variant="manage"
+            currentId={config?.id ?? null}
+            onConnected={onConnect}
+            onDisconnectCurrent={onDisconnect}
+          />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }

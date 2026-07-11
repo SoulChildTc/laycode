@@ -15,6 +15,7 @@
     },
     "android": {
       "package": "com.soulchild.laycode",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#0f0f1a",
         "foregroundImage": "./assets/android-icon-foreground.png",

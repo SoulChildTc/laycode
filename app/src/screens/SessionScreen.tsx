@@ -904,18 +904,22 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       setRevertMessageId(sessionData.revert.messageID)
       setRevertDiff(sessionData.revert.diff || null)
 
-      const raw = await client.getMessages(sessionId)
-      const m: Message[] = parseMessages(raw)
+      try {
+        const raw = await client.getMessages(sessionId)
+        const m: Message[] = parseMessages(raw)
 
-      const revertIdx = m.findIndex((msg) => msg.id === revertMessageId)
-      if (revertIdx >= 0) {
-        const before = m.slice(0, revertIdx)
-        const diffFiles = parseRevertDiff(sessionData.revert.diff || '')
-        const revertedText = findRevertedMessageText(m, revertIdx)
-        setMessages(buildRevertedList(before, countRevertedMessages(m, revertIdx), diffFiles))
-        if (revertedText) setInput(revertedText)
-      } else {
-        setMessages(m.reverse())
+        const revertIdx = m.findIndex((msg) => msg.id === revertMessageId)
+        if (revertIdx >= 0) {
+          const before = m.slice(0, revertIdx)
+          const diffFiles = parseRevertDiff(sessionData.revert.diff || '')
+          const revertedText = findRevertedMessageText(m, revertIdx)
+          setMessages(buildRevertedList(before, countRevertedMessages(m, revertIdx), diffFiles))
+          if (revertedText) setInput(revertedText)
+        } else {
+          setMessages(m.reverse())
+        }
+      } catch {
+        // revert 已生效，仅消息列表刷新失败：不再弹错打断，下次进会话/刷新会自动恢复。
       }
     }
   }, [client, sessionId, cwd, toast])

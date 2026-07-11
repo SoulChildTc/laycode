@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { View, Text, StyleSheet, ActivityIndicator, ScrollView, Image } from 'react-native'
+import { View, Text, StyleSheet, ActivityIndicator, ScrollView, Image, KeyboardAvoidingView, Platform } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { getTheme, ThemeMode } from '../theme'
 import { ServerEntry } from '../types'
@@ -53,17 +53,22 @@ export default function ConnectScreen({ themeMode, onConnect }: Props) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View style={[styles.logo, { backgroundColor: theme.surface }]}>
-            <Image source={require('../../assets/logo-mark.png')} style={styles.logoMark} />
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={styles.header}>
+            <View style={[styles.logo, { backgroundColor: theme.surface }]}>
+              <Image source={require('../../assets/logo-mark.png')} style={styles.logoMark} />
+            </View>
+            <Text style={[styles.title, { color: theme.text }]}>LayCode</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>躺着码，一样 Vibe</Text>
           </View>
-          <Text style={[styles.title, { color: theme.text }]}>LayCode</Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>躺着码，一样 Vibe</Text>
-        </View>
 
-        <ServerManager theme={theme} variant="connect" onConnected={onConnect} />
-      </ScrollView>
+          <ServerManager theme={theme} variant="connect" onConnected={onConnect} />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }
