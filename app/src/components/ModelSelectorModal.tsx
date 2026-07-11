@@ -10,8 +10,6 @@ import type { Provider, ModelInfo, ModelKey, ServerEntry } from '../types'
 import { LayCodeClient } from '../api/client'
 import { storageKey } from '../utils/storage'
 
-const favoritesKey = '@laycode/favorite-models'
-const recentsKey = '@laycode/recent-models'
 const MAX_RECENTS = 20
 
 interface Props {
