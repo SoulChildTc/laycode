@@ -72,6 +72,12 @@ export function handleEventUpgrade(req: IncomingMessage, socket: Duplex, head: B
 }
 
 export function stopWebSocketServer() {
-  wss?.close()
-  wss = null
+  if (wss) {
+    // 先强制终结所有已连接客户端，否则底层 socket 会吊住事件循环、进程无法退出。
+    for (const client of wss.clients) {
+      try { client.terminate() } catch {}
+    }
+    wss.close()
+    wss = null
+  }
 }

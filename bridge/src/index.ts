@@ -5,6 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import net from 'net'
+import type { Duplex } from 'stream'
 import { fileURLToPath } from 'url'
 import { parseArgs } from './config.js'
 import { createAuthMiddleware } from './auth.js'
@@ -280,6 +281,10 @@ const server = app.listen(config.port, async () => {
 })
 
 // WebSocket upgrade routing (single port): 事件流 WS + PTY 代理 WS 共用主 server
+// 跟踪 PTY 代理的活跃 socket（客户端侧 + opencode 侧），shutdown 时统一销毁，
+// 否则这些裸 socket 会吊住事件循环、进程无法退出。
+const activeProxySockets = new Set<Duplex>()
+
 server.on('upgrade', (req, socket, head) => {
   if (!req.url) { socket.destroy(); return }
   const url = new URL(req.url, 'http://localhost')
@@ -322,17 +327,35 @@ server.on('upgrade', (req, socket, head) => {
     socket.pipe(proxy)
   })
 
+  // 登记两端 socket，任一端关闭即从跟踪集合移除，避免泄漏引用。
+  activeProxySockets.add(socket)
+  activeProxySockets.add(proxy)
+  const forget = () => { activeProxySockets.delete(socket); activeProxySockets.delete(proxy) }
+  proxy.on('close', forget)
+  socket.on('close', forget)
+
   proxy.on('error', (err) => { console.log('[ws-proxy] proxy error:', err.message); try { socket.destroy() } catch {} })
   socket.on('error', (err) => { console.log('[ws-proxy] socket error:', err.message); try { proxy.destroy() } catch {} })
 })
 
 // Graceful shutdown
+let shuttingDown = false
 const shutdown = () => {
+  if (shuttingDown) return
+  shuttingDown = true
   console.log('\n  Shutting down...')
   stopMdns()
   stopWebSocketServer()
   stopOpencode()
+  // 强制断开所有 PTY 代理 socket，否则 server.close 的回调永远等不到。
+  for (const s of activeProxySockets) {
+    try { s.destroy() } catch {}
+  }
+  activeProxySockets.clear()
   server.close(() => process.exit(0))
+  // 兜底：即便仍有 handle 吊住事件循环，也在 3 秒后强制退出，不再依赖回调。
+  const timer = setTimeout(() => process.exit(0), 3000)
+  timer.unref()
 }
 
 process.on('SIGINT', shutdown)
