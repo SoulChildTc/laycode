@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, LayoutChangeEvent, ActivityIndicator, Platform, Keyboard } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, LayoutChangeEvent, ActivityIndicator, Platform, Keyboard, Animated, Easing } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import * as Clipboard from 'expo-clipboard'
 import { Feather } from '@expo/vector-icons'
 import TerminalToolbar from '../components/TerminalToolbar'
 import TerminalTabBar from '../components/TerminalTabBar'
@@ -51,16 +52,27 @@ export default function TerminalView({ navigation, route, themeMode, client, con
   var statusRef = useRef(status)
   statusRef.current = status
 
-  var [keyboardHeight, setKeyboardHeight] = useState(0)
+  var kbAnim = useRef(new Animated.Value(0)).current
 
   useEffect(function() {
-    var onShow = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      function(e) { setKeyboardHeight(e.endCoordinates.height) }
+    // 用键盘事件自带的动画时长驱动 Animated，让内容与键盘同步平移（无延迟、丝滑）。
+    // iOS 用 willShow/willHide（拿得到 duration，可同步动画）；安卓用 didShow/didHide。
+    // 关键：用 Animated.Value 走原生动画、不触发 React 重渲染，避免瞬间布局跳变
+    // 打断 WebView 内输入框的聚焦（这正是之前 iOS 键盘弹出又缩回的根因）。
+    var isIOS = Platform.OS === 'ios'
+    function animateTo(h: number, duration?: number) {
+      Animated.timing(kbAnim, {
+        toValue: h,
+        duration: duration && duration > 0 ? duration : 250,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: false,
+      }).start()
+    }
+    var onShow = Keyboard.addListener(isIOS ? 'keyboardWillShow' : 'keyboardDidShow',
+      function(e) { animateTo(e.endCoordinates.height, e.duration) }
     )
-    var onHide = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      function() { setKeyboardHeight(0) }
+    var onHide = Keyboard.addListener(isIOS ? 'keyboardWillHide' : 'keyboardDidHide',
+      function(e) { animateTo(0, e && e.duration) }
     )
     return function() {
       onShow.remove()
@@ -161,7 +173,7 @@ export default function TerminalView({ navigation, route, themeMode, client, con
         onCloseTab={handleTabClose}
         onNewTab={handleNewTab}
       />
-      <View style={{ flex: 1, paddingBottom: Platform.OS === 'android' ? 0 : keyboardHeight }}>
+      <Animated.View style={{ flex: 1, paddingBottom: kbAnim }}>
         <View style={isWeb ? styles.terminalContainer : styles.webViewContainer}>
           {showLoading && (
           <View style={styles.center}>
@@ -198,7 +210,7 @@ export default function TerminalView({ navigation, route, themeMode, client, con
         </View>
       )}
       <TerminalToolbar theme={theme} onKeystroke={terminalKeystroke} visible={showTerminal && !exited} />
-      </View>
+      </Animated.View>
     </SafeAreaView>
   )
 }
@@ -237,6 +249,7 @@ function buildTerminalHtml(
       width: 100%;
       height: 100%;
       position: relative;
+      background-color: #0f0f1a;
     }
 
     .xterm {
@@ -269,36 +282,125 @@ function buildTerminalHtml(
       pointer-events: none;
     }
 
+    /* 选区拖动模式下禁止原生滚动惯性，交由 JS 处理选区 */
+    #t.selecting .xterm-viewport {
+      overflow: hidden;
+      touch-action: none;
+    }
+
     .xterm .xterm-helper-textarea {
       padding: 0;
       border: 0;
       margin: 0;
       position: absolute;
       opacity: 0;
-      left: -9999em;
+      /* 安卓 IME 只对"真正可见、有实际尺寸"的输入框维持焦点。若太小(1px)或
+         z-index 为负(被埋在后面)，IME 会弹一下就把焦点踢回 body，导致键盘缩回。
+         这里给它真实尺寸、透明、放在视口内左上角，视觉隐藏但 IME 认可。 */
+      left: 0;
       top: 0;
-      width: 0;
-      height: 0;
-      z-index: -5;
+      width: 200px;
+      height: 40px;
+      z-index: 0;
       white-space: nowrap;
       overflow: hidden;
       resize: none;
+      color: transparent;
+      background: transparent;
+      caret-color: transparent;
+      pointer-events: none;
+    }
+
+    /* 选区手柄：一条竖线 + 底部圆点，命中区域放大便于手指拖动 */
+    .sel-handle {
+      display: none;
+      position: absolute;
+      width: 2px;
+      background: #6c7dff;
+      z-index: 20;
+      pointer-events: auto;
+    }
+    .sel-handle::after {
+      content: '';
+      position: absolute;
+      left: -8px;
+      bottom: -14px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #6c7dff;
+    }
+    /* 扩大手柄触摸命中区 */
+    .sel-handle::before {
+      content: '';
+      position: absolute;
+      left: -16px;
+      top: -12px;
+      right: -16px;
+      bottom: -24px;
+    }
+    #h-start::after { left: -8px; top: -18px; bottom: auto; }
+
+    #copy-btn {
+      display: none;
+      position: absolute;
+      z-index: 21;
+      background: rgba(30,30,45,0.96);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 16px;
+      border: 1px solid #6c7dff66;
+      pointer-events: auto;
     }
   </style>
 </head>
 <body>
-  <div id="t"></div>
+  <div id="t">
+    <div id="h-start" class="sel-handle"></div>
+    <div id="h-end" class="sel-handle"></div>
+    <div id="copy-btn">复制</div>
+  </div>
 
   <script src="${baseUrl}/xterm.js"></script>
   <script src="${baseUrl}/xterm-addon-fit.js"></script>
 
   <script>
+    // 独立探针：先于主脚本执行，验证 script 标签本身能跑、RNWV 是否就绪
+    try {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'log',
+        message: 'probe:before-main rnwv=' + (!!window.ReactNativeWebView) + ' T=' + (typeof Terminal)
+      }));
+    } catch (e) {}
+  </script>
+
+  <script>
+    // 统一日志：发到 RN 层 console，前缀便于筛选
+    function RNLOG(msg) {
+      try {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'log', message: msg }));
+      } catch (e) {}
+    }
+
+    // 全局错误兜底：任何未捕获错误/Promise 拒绝都上报，避免静默黑屏
+    window.onerror = function(message, source, lineno, colno, error) {
+      RNLOG('window.onerror: ' + message + ' @' + lineno + ':' + colno);
+    };
+    window.addEventListener('unhandledrejection', function(ev) {
+      RNLOG('unhandledrejection: ' + (ev.reason && ev.reason.message ? ev.reason.message : ev.reason));
+    });
+
+    RNLOG('script:start typeof Terminal=' + (typeof Terminal) + ' typeof FitAddon=' + (typeof FitAddon));
+
     var fontsReady = false;
     var pageLoaded = false;
 
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(function() {
         fontsReady = true;
+        RNLOG('fonts:ready');
         tryInit();
       });
     } else {
@@ -307,20 +409,28 @@ function buildTerminalHtml(
 
     window.addEventListener('load', function() {
       pageLoaded = true;
+      RNLOG('page:load');
       tryInit();
     });
 
+    var inited = false;
     function tryInit() {
-      if (fontsReady && pageLoaded) {
+      RNLOG('tryInit fontsReady=' + fontsReady + ' pageLoaded=' + pageLoaded + ' inited=' + inited);
+      if (fontsReady && pageLoaded && !inited) {
+        inited = true;
         init();
       }
     }
 
     function init() {
       try {
+        RNLOG('init:start');
+        var IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         var container = document.getElementById('t');
         var cw = container.clientWidth;
         var ch = container.clientHeight;
+        RNLOG('init:container w=' + cw + ' h=' + ch);
 
         var term = new Terminal({
           cursorBlink: true,
@@ -335,37 +445,239 @@ function buildTerminalHtml(
             background: '#0f0f1a',
             foreground: '#e8e8f0',
             cursor: '#e8e8f0',
-            selectionBackground: '#6c7dff44',
+            selectionBackground: '#6c7dff88',
           },
           cols: Math.floor(cw / 9) || 80,
           rows: Math.floor(ch / 20) || 24,
         });
+        RNLOG('init:term created cols=' + term.cols + ' rows=' + term.rows);
 
         var fitAddon = new FitAddon.FitAddon();
         term.loadAddon(fitAddon);
         term.open(container);
+        RNLOG('init:term.open done');
 
-        // --- 移动端滚动修复 ---
-        // viewport 已通过 CSS z-index:10 置于最上层，浏览器原生处理滚动
-        // 这里只需阻止事件冒泡到 xterm 的内部触摸处理器（它会把手势转成按行滚动）
+        // 诊断：监听 helper-textarea 的 focus/blur，定位"键盘弹出又缩回"
+        var _ta = container.querySelector('.xterm-helper-textarea');
+        if (_ta) {
+          _ta.addEventListener('focus', function() { RNLOG('ta:focus'); });
+          _ta.addEventListener('blur', function() {
+            var ae = document.activeElement;
+            RNLOG('ta:blur -> activeEl=' + (ae ? (ae.tagName + '.' + (ae.className||'') ) : 'null'));
+          });
+        }
+        window.addEventListener('resize', function() { RNLOG('win:resize innerH=' + window.innerHeight); });
+
+        // --- 移动端滚动 + 长按拖动选区 + 手柄 ---
+        // 平时 viewport 在顶层处理原生滚动。长按进入选区模式，用 xterm 选区 API
+        // 选中文字并显示两个可拖动手柄和一个复制按钮，拖手柄微调范围，点按钮复制。
         var vp = container.querySelector('.xterm-viewport');
         if (vp) {
           var tapFlag = true;
+          var lpTimer = null;
+          var dragging = false;        // touchstart 后到 touchend 前的即时拖动
+          var selActive = false;       // 选区是否处于活动（显示手柄）状态
+          var startCell = null;        // 选区起点 {col,row}（buffer 绝对行）
+          var endCell = null;          // 选区终点
+          var handleDrag = null;       // 正在拖动的手柄: 'start' | 'end' | null
 
+          var hStart = document.getElementById('h-start');
+          var hEnd = document.getElementById('h-end');
+          var copyBtn = document.getElementById('copy-btn');
+
+          // 像素坐标 -> buffer 绝对行列（参考 xterm 内部 MouseService）
+          function pointToCell(clientX, clientY) {
+            var rect = vp.getBoundingClientRect();
+            var cellW = 9, cellH = 20;
+            try {
+              var dims = term._core._renderService.dimensions.css.cell;
+              if (dims && dims.width) { cellW = dims.width; cellH = dims.height; }
+            } catch (ex) {}
+            var x = clientX - rect.left;
+            var y = clientY - rect.top;
+            var col = Math.max(0, Math.min(term.cols - 1, Math.floor(x / cellW)));
+            var viewRow = Math.max(0, Math.min(term.rows - 1, Math.floor(y / cellH)));
+            var base = term.buffer.active.viewportY;
+            return { col: col, row: base + viewRow };
+          }
+
+          // 行列 -> 相对 viewport 的像素坐标（用于放手柄）
+          function cellToPoint(cell) {
+            var cellW = 9, cellH = 20;
+            try {
+              var dims = term._core._renderService.dimensions.css.cell;
+              if (dims && dims.width) { cellW = dims.width; cellH = dims.height; }
+            } catch (ex) {}
+            var base = term.buffer.active.viewportY;
+            var viewRow = cell.row - base;
+            return { x: cell.col * cellW, y: viewRow * cellH, h: cellH };
+          }
+
+          function normalize() {
+            var a = startCell, b = endCell;
+            if (b.row < a.row || (b.row === a.row && b.col < a.col)) return { a: b, b: a };
+            return { a: a, b: b };
+          }
+
+          function applySelection() {
+            var n = normalize();
+            var a = n.a, b = n.b;
+            if (a.row === b.row) {
+              term.select(a.col, a.row, b.col - a.col + 1);
+            } else {
+              // 跨行：用 select 的跨行 length（沿 buffer 折行延伸），
+              // 这样只选起止字符之间的部分，而不是整行。
+              var cols = term.cols;
+              var len = (cols - a.col) + (b.row - a.row - 1) * cols + (b.col + 1);
+              term.select(a.col, a.row, len);
+            }
+          }
+
+          // 根据当前选区端点更新手柄与复制按钮的位置
+          function updateHandles() {
+            if (!selActive) {
+              hStart.style.display = 'none';
+              hEnd.style.display = 'none';
+              copyBtn.style.display = 'none';
+              return;
+            }
+            var n = normalize();
+            var ps = cellToPoint(n.a);
+            var pe = cellToPoint({ col: n.b.col + 1, row: n.b.row });
+            hStart.style.display = 'block';
+            hEnd.style.display = 'block';
+            hStart.style.left = ps.x + 'px';
+            hStart.style.top = ps.y + 'px';
+            hStart.style.height = ps.h + 'px';
+            hEnd.style.left = pe.x + 'px';
+            hEnd.style.top = pe.y + 'px';
+            hEnd.style.height = pe.h + 'px';
+            // 复制按钮：放在选区起点更上方，并整体上移，避免压住起点手柄圆点。
+            // 若起点太靠顶部（上方放不下），则改放到选区下方。
+            copyBtn.style.display = 'block';
+            var btnLeft = Math.max(4, ps.x - 4);
+            if (ps.y >= 44) {
+              copyBtn.style.top = (ps.y - 40) + 'px';
+            } else {
+              copyBtn.style.top = (ps.y + ps.h + 22) + 'px';
+            }
+            copyBtn.style.left = btnLeft + 'px';
+          }
+
+          function enterSelection() {
+            selActive = true;
+            container.classList.add('selecting');
+            // 长按选字时收起键盘：仅安卓 blur。iOS 上 blur 会让键盘进入"用户已收起"
+            // 状态导致后续 focus 弹不出，所以 iOS 不 blur（iOS 进入终端本就不自动弹键盘）。
+            if (!IS_IOS) {
+              var ta = container.querySelector('.xterm-helper-textarea');
+              if (ta) ta.blur();
+            }
+          }
+
+          function exitSelection() {
+            selActive = false;
+            startCell = endCell = null;
+            container.classList.remove('selecting');
+            if (term.hasSelection()) term.clearSelection();
+            updateHandles();
+          }
+
+          // 选区变化（含滚动重绘）时刷新手柄位置
+          term.onSelectionChange(function() { updateHandles(); });
+          term.onScroll(function() { if (selActive) updateHandles(); });
+
+          // 拦截浏览器在 touch 之后合成的鼠标事件：它们会到达 xterm 并把
+          // helper-textarea 失焦（表现为键盘弹出瞬间又缩回）。聚焦完全由我们
+          // 在 touchend 里用 term.focus() 控制。
+          ['mousedown', 'mouseup', 'click'].forEach(function(evt) {
+            vp.addEventListener(evt, function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+            }, true);
+          });
+
+          // --- viewport 触摸：滚动 / 长按选区 ---
           vp.addEventListener('touchstart', function(e) {
+            if (handleDrag) return; // 手柄拖动优先
             tapFlag = true;
+            if (e.touches.length === 1) {
+              var t0 = e.touches[0];
+              lpTimer = setTimeout(function() {
+                tapFlag = false;
+                dragging = true;
+                enterSelection();
+                startCell = pointToCell(t0.clientX, t0.clientY);
+                endCell = { col: startCell.col, row: startCell.row };
+                applySelection();
+              }, 400);
+            }
             e.stopPropagation();
           }, { passive: true });
 
           vp.addEventListener('touchmove', function(e) {
-            tapFlag = false;
+            if (dragging) {
+              e.preventDefault();
+              endCell = pointToCell(e.touches[0].clientX, e.touches[0].clientY);
+              applySelection();
+              updateHandles();
+            } else {
+              tapFlag = false;
+              if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
+              if (selActive) { exitSelection(); } // 滚动时退出选区
+            }
             e.stopPropagation();
-          }, { passive: true });
+          }, { passive: false });
 
           vp.addEventListener('touchend', function(e) {
+            if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
             e.stopPropagation();
-            if (tapFlag) term.focus();
+            if (dragging) {
+              e.preventDefault();
+              dragging = false;
+              updateHandles(); // 选区保持，显示手柄+复制按钮
+            } else if (tapFlag) {
+              // 单击：退出选区并在用户手势同步栈内聚焦终端，确保安卓弹出键盘
+              if (selActive) { exitSelection(); }
+              RNLOG('tap:focus-call selActive=' + selActive + ' handleDrag=' + handleDrag);
+              term.focus();
+            }
+          }, { passive: false });
+
+          // --- 手柄拖动 ---
+          function bindHandle(el, which) {
+            el.addEventListener('touchstart', function(e) {
+              handleDrag = which;
+              e.preventDefault();
+              e.stopPropagation();
+            }, { passive: false });
+          }
+          bindHandle(hStart, 'start');
+          bindHandle(hEnd, 'end');
+
+          document.addEventListener('touchmove', function(e) {
+            if (!handleDrag) return;
+            e.preventDefault();
+            var cell = pointToCell(e.touches[0].clientX, e.touches[0].clientY);
+            if (handleDrag === 'start') startCell = cell; else endCell = cell;
+            applySelection();
+            updateHandles();
+          }, { passive: false });
+
+          document.addEventListener('touchend', function(e) {
+            if (handleDrag) { handleDrag = null; e.stopPropagation(); }
           }, { passive: true });
+
+          // --- 复制按钮 ---
+          copyBtn.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var text = term.getSelection();
+            if (text) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'copy', text: text }));
+            }
+            exitSelection();
+          }, { passive: false });
         }
 
         // --- 智能自动滚动 ---
@@ -428,15 +740,19 @@ function buildTerminalHtml(
         window.__doFit = doFit;
 
         // --- 连接 PTY ---
+        RNLOG('ws:connecting ' + ${JSON.stringify(fullWsUrl)});
         var ws = new WebSocket(${JSON.stringify(fullWsUrl)});
         window.__ws = ws;
 
         ws.onopen = function() {
-          term.focus();
+          RNLOG('ws:open');
+          // 不自动 focus：iOS 上 focus 会立刻弹键盘。进入终端不弹，等用户点击再弹。
           doFit();
         };
 
+        var firstData = true;
         ws.onmessage = function(e) {
+          if (firstData) { firstData = false; RNLOG('ws:first-data type=' + (e.data instanceof Blob ? 'blob' : 'text')); }
           if (e.data instanceof Blob) {
             e.data.arrayBuffer().then(function(b) {
               var u8 = new Uint8Array(b);
@@ -451,6 +767,7 @@ function buildTerminalHtml(
         };
 
         ws.onclose = function(e) {
+          RNLOG('ws:close code=' + e.code);
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'ws-close',
             code: e.code,
@@ -458,6 +775,7 @@ function buildTerminalHtml(
         };
 
         ws.onerror = function() {
+          RNLOG('ws:error');
           window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ws-error' }));
         };
 
@@ -467,15 +785,9 @@ function buildTerminalHtml(
           }
         });
 
-        window.ReactNativeWebView.postMessage(JSON.stringify({
-          type: 'log',
-          message: 'xterm ready, w:' + cw + ' h:' + ch + ' cols:' + term.cols + ' rows:' + term.rows,
-        }));
+        RNLOG('init:done ready w=' + cw + ' h=' + ch + ' cols=' + term.cols + ' rows=' + term.rows + ' rowsEl=' + (container.querySelector('.xterm-rows') ? 'yes' : 'no'));
       } catch (e) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({
-          type: 'log',
-          message: 'init error: ' + e.message,
-        }));
+        RNLOG('init:ERROR ' + e.message + ' | ' + (e.stack ? String(e.stack).slice(0, 120) : ''));
       }
     }
   </script>
@@ -487,6 +799,18 @@ function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited
   var ref = useRef<any>(null)
   var WebView = require('react-native-webview').WebView
   var baseUrl = 'http://' + bridgeHost + ':' + bridgePort + '/static'
+  var [toast, setToast] = useState(false)
+  var toastTimer = useRef<any>(null)
+
+  var showCopiedToast = useCallback(function() {
+    setToast(true)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(function() { setToast(false) }, 1500)
+  }, [])
+
+  useEffect(function() {
+    return function() { if (toastTimer.current) clearTimeout(toastTimer.current) }
+  }, [])
 
   useEffect(function() {
     terminalPaste = function(data: string) {
@@ -510,14 +834,25 @@ function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited
     try {
       var msg = JSON.parse(event.nativeEvent.data)
       if (msg.type === 'ws-close') {
+        console.log('[WebView] ws-close code=' + msg.code)
         setExited(true)
+      } else if (msg.type === 'ws-error') {
+        console.log('[WebView] ws-error')
       } else if (msg.type === 'resize' && msg.cols && msg.rows) {
         resize(msg.cols, msg.rows)
+      } else if (msg.type === 'copy' && msg.text) {
+        Clipboard.setStringAsync(msg.text).then(function() { showCopiedToast() }).catch(function() {})
       } else if (msg.type === 'log') {
         console.log('[WebView]', msg.message)
+      } else if (msg.type === 'probe') {
+        console.log('[WebView] PROBE', JSON.stringify(msg.data))
+      } else if (msg.type === 'probe-error') {
+        console.log('[WebView] PROBE-ERROR', msg.msg)
       }
-    } catch {}
-  }, [setExited, resize])
+    } catch (err) {
+      console.log('[WebView] handleMessage parse error', err)
+    }
+  }, [setExited, resize, showCopiedToast])
 
   var handleLayout = useCallback(function(e: LayoutChangeEvent) {
     var cols = Math.floor(e.nativeEvent.layout.width / CHAR_W)
@@ -528,7 +863,34 @@ function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited
   }, [resize])
 
   var handleLoad = useCallback(function() {
+    console.log('[WebView] onLoad')
+    // 主动探测 WebView 内部状态，不依赖脚本内部的 postMessage 是否成功
+    var probe = [
+      "try{",
+      "  var s = {",
+      "    hasRNWV: !!window.ReactNativeWebView,",
+      "    typeofTerminal: typeof Terminal,",
+      "    typeofFitAddon: typeof FitAddon,",
+      "    scriptRan: typeof RNLOG,",
+      "    inited: (typeof inited!=='undefined')?inited:'n/a',",
+      "    tEl: !!document.getElementById('t'),",
+      "    rowsEl: !!document.querySelector('.xterm-rows'),",
+      "    bodyHTML: document.body ? document.body.innerHTML.length : -1",
+      "  };",
+      "  window.ReactNativeWebView.postMessage(JSON.stringify({type:'probe', data:s}));",
+      "}catch(e){window.ReactNativeWebView.postMessage(JSON.stringify({type:'probe-error',msg:String(e)}));}",
+      "true;"
+    ].join('')
+    ref.current?.injectJavaScript(probe)
     ref.current?.injectJavaScript("try{window.__doFit&&window.__doFit()}catch(e){};true;")
+  }, [])
+
+  var handleError = useCallback(function(e: any) {
+    console.log('[WebView] onError', e?.nativeEvent?.description, e?.nativeEvent?.url)
+  }, [])
+
+  var handleHttpError = useCallback(function(e: any) {
+    console.log('[WebView] onHttpError status=' + e?.nativeEvent?.statusCode, e?.nativeEvent?.url)
   }, [])
 
   return (
@@ -539,6 +901,8 @@ function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited
         style={{ flex: 1, backgroundColor: '#0f0f1a' }}
         onMessage={handleMessage}
         onLoad={handleLoad}
+        onError={handleError}
+        onHttpError={handleHttpError}
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled
@@ -554,6 +918,12 @@ function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited
         mixedContentMode="always"
         androidLayerType="hardware"
       />
+      {toast && (
+        <View style={styles.toast} pointerEvents="none">
+          <Feather name="check" size={13} color="#fff" style={{ marginRight: 5 }} />
+          <Text style={styles.toastText}>已复制</Text>
+        </View>
+      )}
     </View>
   )
 }
@@ -641,4 +1011,16 @@ var styles = StyleSheet.create({
   exitedText: { color: '#f87171', fontSize: 13, fontWeight: '600' },
   restartBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   restartText: { color: '#f87171', fontSize: 12 },
+  toast: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(30,30,45,0.92)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+  },
+  toastText: { color: '#fff', fontSize: 13, fontWeight: '600' },
 })
