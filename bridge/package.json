@@ -3,20 +3,42 @@
   "version": "0.1.0",
   "type": "module",
   "description": "LayCode bridge — run the desktop bridge for the LayCode mobile app",
+  "keywords": [
+    "laycode",
+    "opencode",
+    "bridge",
+    "cli",
+    "mobile",
+    "companion"
+  ],
+  "homepage": "https://github.com/SoulChildTc/laycode#readme",
+  "bugs": {
+    "url": "https://github.com/SoulChildTc/laycode/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SoulChildTc/laycode.git",
+    "directory": "bridge"
+  },
+  "author": "SoulChild",
+  "license": "MIT",
   "bin": {
     "laycode-cli": "dist/cli.js"
   },
   "files": [
     "dist",
-    "public"
+    "public",
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "dev": "tsx watch src/cli.ts run",
-    "build": "tsc",
-    "start": "node dist/cli.js run"
+    "build": "rm -rf dist && tsc",
+    "start": "node dist/cli.js run",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@opencode-ai/sdk": "^1.17.1",

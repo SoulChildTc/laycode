@@ -5,11 +5,13 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import net from 'net'
+import { fileURLToPath } from 'url'
 import { parseArgs } from './config.js'
 import { createAuthMiddleware } from './auth.js'
 import { createProxyHandler } from './proxy.js'
+import { getVersion } from './paths.js'
 
-const __dirname = path.dirname(new URL(import.meta.url).pathname)
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { startMdns, stopMdns } from './mdns.js'
 import { startWebSocketServer, stopWebSocketServer, handleEventUpgrade } from './ws.js'
 import { ensureOpencode, stopOpencode, restartOpencode } from './opencode.js'
@@ -182,7 +184,7 @@ app.use('/opencode-api', createProxyHandler(config))
 
 // Custom API for future extensions
 app.get('/api/v1/health', (_req, res) => {
-  res.json({ status: 'ok', version: '0.1.0' })
+  res.json({ status: 'ok', version: getVersion() })
 })
 
 // Restart opencode (auth-protected)
