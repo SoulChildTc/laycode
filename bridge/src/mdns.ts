@@ -1,45 +1,40 @@
-import { spawn, execSync, ChildProcess } from 'child_process'
 import os from 'os'
+import { execSync } from 'child_process'
+import { Bonjour } from 'bonjour-service'
+
+// 跨平台 mDNS 广播：用 bonjour-service（纯 JS）替代 macOS 专有的 dns-sd，
+// 服务类型保持 _laycode._tcp，与 App 端 zeroconf.scan('laycode','tcp','local') 匹配。
+let instance: InstanceType<typeof Bonjour> | null = null
 
 function computerName(): string {
   try {
-    return execSync('scutil --get ComputerName', { encoding: 'utf-8' }).trim()
-  } catch {
-    return os.hostname()
+    if (process.platform === 'darwin') {
+      return execSync('scutil --get ComputerName', { encoding: 'utf-8' }).trim()
+    }
+  } catch {}
+  return os.hostname()
+}
+
+export function startMdns(port: number) {
+  try {
+    instance = new Bonjour()
+    const name = `LayCode Bridge on ${computerName()}`
+    instance.publish({
+      name,
+      type: 'laycode',
+      protocol: 'tcp',
+      port,
+      txt: { info: 'LayCode Bridge' },
+    })
+    console.log(`  mDNS:        _laycode._tcp advertising on port ${port}`)
+  } catch (err: any) {
+    console.error(`  mDNS warning: ${err?.message || err}`)
   }
 }
 
-let mdnsProcess: ChildProcess | null = null
-
-export function startMdns(port: number) {
-  const name = `LayCode Bridge on ${computerName()}`
-  mdnsProcess = spawn('dns-sd', [
-    '-R', name,
-    '_laycode._tcp',
-    '.',
-    String(port),
-    'info=LayCode Bridge',
-  ], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: false,
-  })
-
-  mdnsProcess.stdout?.on('data', (d) => process.stdout.write(d))
-  mdnsProcess.stderr?.on('data', (d) => process.stderr.write(d))
-
-  mdnsProcess.on('exit', (code) => {
-    if (code && code !== 0) {
-      console.error(`  mDNS warning: dns-sd exited with code ${code}`)
-    }
-    mdnsProcess = null
-  })
-
-  console.log(`  mDNS:        _laycode._tcp advertising on port ${port}`)
-}
-
 export function stopMdns() {
-  if (mdnsProcess) {
-    mdnsProcess.kill('SIGTERM')
-    mdnsProcess = null
+  if (instance) {
+    try { instance.unpublishAll(() => instance?.destroy()) } catch {}
+    instance = null
   }
 }

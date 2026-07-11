@@ -49,6 +49,12 @@
           "microphonePermission": false
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "LayCode 需要相机权限以扫描配对二维码连接电脑。"
+        }
+      ],
       "expo-font"
     ],
     "extra": {

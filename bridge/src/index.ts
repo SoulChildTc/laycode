@@ -5,7 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import net from 'net'
-import { parseArgs, printStartupInfo } from './config.js'
+import { parseArgs } from './config.js'
 import { createAuthMiddleware } from './auth.js'
 import { createProxyHandler } from './proxy.js'
 
@@ -15,13 +15,15 @@ import { startWebSocketServer, stopWebSocketServer } from './ws.js'
 import { ensureOpencode, stopOpencode, restartOpencode } from './opencode.js'
 import { readTodos, addTodo, updateTodo, deleteTodo } from './todos.js'
 import { getStatus, initRepo, getDiff, stageFile, unstageFile, commit, discardFile } from './git.js'
+import { morganStream } from './logger.js'
+import { printPairing } from './qr.js'
 
 const config = parseArgs()
 const app = express()
 
 app.use(cors())
 app.use(express.json({ limit: '50mb' }))
-app.use(morgan('dev'))
+app.use(morgan('combined', { stream: morganStream }))
 app.use('/static', express.static(path.join(__dirname, '../public')))
 
 // Auth on all /opencode-api routes
@@ -244,12 +246,15 @@ app.post('/api/v1/browse/folder', (req, res) => {
 })
 
 const server = app.listen(config.port, async () => {
-  printStartupInfo(config)
+  console.log(`LayCode Bridge`)
+  console.log(`  Port:        ${config.port}`)
+  console.log(`  Token auth:  enabled`)
   try {
     const opencodeUrl = await ensureOpencode(config)
     config.opencodeUrl = opencodeUrl
     startMdns(config.port)
     startWebSocketServer(config)
+    printPairing(config)
   } catch (err: any) {
     console.error(`  Error: ${err.message}`)
     process.exit(1)

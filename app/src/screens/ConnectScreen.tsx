@@ -6,6 +6,8 @@ import { getTheme, ThemeMode } from '../theme'
 import { ServerEntry } from '../types'
 import { useDiscovery, DiscoveredBridge } from '../hooks/useDiscovery'
 import { useServers } from '../hooks/useServers'
+import QRScanner from '../components/QRScanner'
+import { PairingInfo } from '../utils/pairing'
 
 interface Props {
   themeMode: ThemeMode
@@ -23,6 +25,7 @@ export default function ConnectScreen({ themeMode, onConnect }: Props) {
   const [error, setError] = useState('')
   const [connecting, setConnecting] = useState(false)
   const [autoConnecting, setAutoConnecting] = useState(true)
+  const [scannerVisible, setScannerVisible] = useState(false)
 
   useEffect(() => {
     autoConnect()
@@ -92,6 +95,26 @@ export default function ConnectScreen({ themeMode, onConnect }: Props) {
     setConnecting(false)
   }
 
+  const handleScanned = async (info: PairingInfo) => {
+    setScannerVisible(false)
+    setError('')
+    setConnecting(true)
+    const entry = {
+      name: info.name || info.host,
+      host: info.host,
+      port: info.port,
+      token: info.token,
+    }
+    const ok = await test(entry)
+    if (ok) {
+      const saved = await add(entry)
+      onConnect(saved)
+    } else {
+      setError('扫码连接失败，请确认电脑和手机在同一网络')
+    }
+    setConnecting(false)
+  }
+
   const handleSelectBridge = (b: DiscoveredBridge) => {
     setName(b.name || b.host)
     setHost(b.host)
@@ -125,6 +148,15 @@ export default function ConnectScreen({ themeMode, onConnect }: Props) {
           <Text style={[styles.title, { color: theme.text }]}>LayCode</Text>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>躺着码，一样 Vibe</Text>
         </View>
+
+        {/* 扫码连接 */}
+        <TouchableOpacity
+          style={[styles.scanBtn, { backgroundColor: theme.accent }]}
+          onPress={() => setScannerVisible(true)}
+        >
+          <Feather name="maximize" size={18} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.scanBtnText}>扫码连接</Text>
+        </TouchableOpacity>
 
         {/* Discovered bridges */}
         {scanning ? (
@@ -238,6 +270,13 @@ export default function ConnectScreen({ themeMode, onConnect }: Props) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <QRScanner
+        visible={scannerVisible}
+        theme={theme}
+        onClose={() => setScannerVisible(false)}
+        onScanned={handleScanned}
+      />
     </SafeAreaView>
   )
 }
@@ -245,6 +284,8 @@ export default function ConnectScreen({ themeMode, onConnect }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { paddingBottom: 40 },
+  scanBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 24, marginBottom: 16, height: 48, borderRadius: 10 },
+  scanBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   header: { alignItems: 'center', paddingTop: 32, paddingBottom: 20 },
   logo: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
   logoText: { color: '#fff', fontSize: 24, fontWeight: 'bold' },

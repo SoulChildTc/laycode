@@ -1,10 +1,12 @@
 import { BridgeConfig } from './types.js'
+import { loadPersistedConfig } from './store.js'
 
 export function parseArgs(): BridgeConfig {
+  const persisted = loadPersistedConfig()
   const args = process.argv.slice(2)
   const config: BridgeConfig = {
-    token: 'laycode',
-    port: 8079,
+    token: persisted.token,
+    port: persisted.port,
     opencodeUrl: 'http://localhost:4096',
   }
 
@@ -23,12 +25,4 @@ export function parseArgs(): BridgeConfig {
   }
 
   return config
-}
-
-export function printStartupInfo(config: BridgeConfig) {
-  console.log(`LayCode Bridge v0.1.0`)
-  console.log(`  Port:        ${config.port}`)
-  console.log(`  Token:       ${config.token}`)
-  console.log(`  mDNS:        _laycode._tcp (auto-discovery)`)
-  console.log(`  Token auth:  enabled`)
 }
