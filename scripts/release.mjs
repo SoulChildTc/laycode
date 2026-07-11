@@ -1,12 +1,15 @@
 #!/usr/bin/env node
-// 一键发版：升级 laycode-cli 版本 → 构建 → 发布到 npm。
+// 一键发版：升级 laycode-cli 版本 → 构建 → 发布到 npm → 提交版本号并打 tag。
 // 用法：node scripts/release.mjs <patch|minor|major> [--dry-run]
+// 前提：工作区须干净（业务代码先自行提交）；push 由你手动执行。
 import { execFileSync } from 'child_process'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
+import readline from 'readline'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const repoRoot = path.join(__dirname, '..')
 const bump = process.argv[2]
 const dryRun = process.argv.includes('--dry-run')
 
@@ -18,6 +21,20 @@ if (!['patch', 'minor', 'major'].includes(bump)) {
 function run(cmd, args) {
   console.log(`\n$ ${cmd} ${args.join(' ')}`)
   execFileSync(cmd, args, { stdio: 'inherit' })
+}
+
+function git(args) {
+  return execFileSync('git', args, { cwd: repoRoot, encoding: 'utf-8' }).trim()
+}
+
+function confirm(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close()
+      resolve(/^y(es)?$/i.test(answer.trim()))
+    })
+  })
 }
 
 function readVersion(pkgRelPath) {
@@ -46,23 +63,51 @@ if (dryRun) {
   process.exit(0)
 }
 
+// 前置校验：工作区必须干净。否则自动 commit 会把未提交的业务改动一起裹进 release 提交。
+if (git(['status', '--porcelain'])) {
+  console.error('工作区有未提交的改动，拒绝发版。')
+  console.error('请先提交（或暂存）你的业务代码，再运行发版。')
+  process.exit(1)
+}
+
 // 1. 升级版本号
 run('pnpm', ['--filter', 'laycode-cli', 'exec', 'npm', 'version', bump, '--no-git-tag-version'])
+const newVer = readVersion('../bridge/package.json')
 
-// 2~3. 构建 + 发布。任一步失败则把版本号回滚到 bump 前，避免留下已改版本却未发布的脏状态。
-try {
-  run('pnpm', ['--filter', 'laycode-cli', 'build'])
-  // 显式指定官方 registry：很多人本地默认源是镜像（如淘宝），会导致发布失败或发错地址。
-  run('pnpm', ['--filter', 'laycode-cli', 'publish', '--access', 'public', '--no-git-checks', '--registry', NPM_REGISTRY])
-} catch (err) {
-  console.error(`\n❌ 发布失败，正在回滚版本号到 ${bridgeVer}...`)
+// 2~3. 构建 + 发布。任一步失败（或用户取消）则把版本号回滚到 bump 前（此时尚未 commit/tag，历史仍干净）。
+function rollback() {
+  console.error(`\n正在回滚版本号到 ${bridgeVer}...`)
   try {
     run('pnpm', ['--filter', 'laycode-cli', 'exec', 'npm', 'version', bridgeVer, '--no-git-tag-version', '--allow-same-version'])
     console.error(`已回滚版本号到 ${bridgeVer}。`)
   } catch {
     console.error(`⚠️ 版本号回滚失败，请手动把 bridge/package.json 的 version 改回 ${bridgeVer}。`)
   }
+}
+
+try {
+  run('pnpm', ['--filter', 'laycode-cli', 'build'])
+
+  // 发布前确认：这是唯一不可逆的一步，让用户最终拍板。
+  const ok = await confirm(`\n即将发布 laycode-cli@${newVer} 到 ${NPM_REGISTRY}\n确认发布？(y/N) `)
+  if (!ok) {
+    console.error('已取消发布。')
+    rollback()
+    process.exit(1)
+  }
+
+  // 显式指定官方 registry：很多人本地默认源是镜像（如淘宝），会导致发布失败或发错地址。
+  run('pnpm', ['--filter', 'laycode-cli', 'publish', '--access', 'public', '--no-git-checks', '--registry', NPM_REGISTRY])
+} catch (err) {
+  console.error(`\n❌ 发布失败`)
+  rollback()
   process.exit(1)
 }
 
-console.log(`\n✅ 发布完成（${bump}）`)
+// 4. 发布成功后再提交版本号并打 tag（成功才落历史，push 由你手动执行）。
+run('git', ['-C', repoRoot, 'add', 'bridge/package.json'])
+run('git', ['-C', repoRoot, 'commit', '-m', `release: v${newVer}`])
+run('git', ['-C', repoRoot, 'tag', `v${newVer}`])
+
+console.log(`\n✅ 发布完成（${bump} → v${newVer}）`)
+console.log(`   已提交并打 tag v${newVer}。推送：git push && git push --tags`)
