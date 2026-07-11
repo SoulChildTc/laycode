@@ -1,4 +1,7 @@
 {
+  "cli": {
+    "appVersionSource": "local"
+  },
   "build": {
     "development": {
       "developmentClient": true,
@@ -13,15 +16,16 @@
         "buildType": "apk"
       }
     },
-    "production-google": {
-      "android": {
-        "buildType": "app-bundle"
-      }
-    },
-    "production-china": {
-      "distribution": "internal",
+    "production-apk": {
+      "distribution": "store",
       "android": {
         "buildType": "apk"
+      }
+    },
+    "production-aab": {
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle"
       }
     }
   }

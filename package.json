@@ -12,7 +12,12 @@
     "server": "pnpm --filter laycode-cli build && node bridge/dist/cli.js start --foreground",
     "app": "cd app && npm start",
     "mobile": "cd app && npm start",
-    "build": "pnpm --filter laycode-cli build",
+    "build": "echo '请指定构建目标：build:bridge | build:dev-apk | build:preview-apk | build:prod-apk | build:prod-aab' && exit 1",
+    "build:bridge": "pnpm --filter laycode-cli build",
+    "build:dev-apk": "cd app && npx eas-cli build --platform android --profile development",
+    "build:preview-apk": "cd app && npx eas-cli build --platform android --profile preview",
+    "build:prod-apk": "cd app && npx eas-cli build --platform android --profile production-apk",
+    "build:prod-aab": "cd app && npx eas-cli build --platform android --profile production-aab",
     "release": "node scripts/release.mjs"
   }
 }
