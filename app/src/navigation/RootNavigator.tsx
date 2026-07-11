@@ -8,7 +8,8 @@ import HomeScreen from '../screens/HomeScreen'
 import BrowseWorkspaceScreen from '../screens/BrowseWorkspaceScreen'
 import WorkspaceScreen from '../screens/WorkspaceScreen'
 import SessionScreen from '../screens/SessionScreen'
-import FileExplorerScreen from '../screens/FileExplorerScreen'
+// 文件浏览功能尚未开放，入口已屏蔽（见下方 MainTabs）
+// import FileExplorerScreen from '../screens/FileExplorerScreen'
 import SettingsScreen from '../screens/SettingsScreen'
 import ServerManagementScreen from '../screens/ServerManagementScreen'
 import TodoSummaryScreen from '../screens/TodoSummaryScreen'
@@ -36,7 +37,7 @@ export type RootStackParamList = {
 export type TabParamList = {
   Home: undefined
   Todos: undefined
-  Files: undefined
+  // Files: undefined  // 文件浏览暂未开放
   Terminal: undefined
   Settings: undefined
 }
@@ -71,9 +72,11 @@ function MainTabs({ themeMode, client, config, navigation: stackNav, onThemeTogg
       <Tab.Screen name="Todos" options={{ tabBarIcon: ({ color, size }) => <Feather name="check-square" size={size} color={color} /> }}>
         {() => <TodoSummaryScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
       </Tab.Screen>
+      {/* 文件浏览功能尚未正式开放，暂时屏蔽入口（下一版基于届时状态再放开）
       <Tab.Screen name="Files" options={{ tabBarIcon: ({ color, size }) => <Feather name="folder" size={size} color={color} /> }}>
         {() => <FileExplorerScreen route={{} as any} themeMode={themeMode} client={client!} />}
       </Tab.Screen>
+      */}
       <Tab.Screen name="Terminal" options={{ tabBarIcon: ({ color, size }) => <Feather name="terminal" size={size} color={color} /> }}>
         {() => <TerminalListScreen navigation={stackNav} route={{ params: {} }} themeMode={themeMode} client={client!} config={config!} />}
       </Tab.Screen>

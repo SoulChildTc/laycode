@@ -1,0 +1,14 @@
+{
+  "name": "laycode-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "LayCode monorepo — bridge (laycode-cli) 及其别名包 (laycode)",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "pnpm --filter laycode-cli build",
+    "release": "node scripts/release.mjs"
+  }
+}

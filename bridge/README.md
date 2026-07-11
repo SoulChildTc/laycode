@@ -8,7 +8,8 @@
 
 - Node.js >= 18
 - macOS、Linux 或 Windows
-- [opencode](https://github.com/anomalyco/opencode) 已安装并可在命令行调用
+
+opencode 已通过 `@opencode-ai/sdk` 内置托管，无需单独安装。若想连接自己已有的 opencode 实例，用 `--opencode-url` 指定即可。
 
 ## 快速开始
 

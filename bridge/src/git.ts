@@ -39,6 +39,12 @@ function checkGitExists(): boolean {
   }
 }
 
+// porcelain 中 rename/copy 的路径形如 `old -> new`，取箭头后的新路径。
+function renameTarget(path: string): string {
+  const parts = path.split(' -> ')
+  return parts[parts.length - 1]
+}
+
 export function getStatus(directory: string): GitStatus {
   if (!checkGitExists()) {
     throw new Error('git not found')
@@ -63,15 +69,15 @@ export function getStatus(directory: string): GitStatus {
     if (stagedStatus !== ' ' && stagedStatus !== '?') {
       let status = stagedStatus
       if (stagedStatus === 'R' || stagedStatus === 'C') {
-        const parts = path.split(' -> ')
-        staged.push({ path: parts[parts.length - 1], status })
+        staged.push({ path: renameTarget(path), status })
       } else {
         staged.push({ path, status })
       }
     }
 
     if (unstagedStatus !== ' ' && unstagedStatus !== '?') {
-      unstaged.push({ path, status: unstagedStatus })
+      const p = (unstagedStatus === 'R' || unstagedStatus === 'C') ? renameTarget(path) : path
+      unstaged.push({ path: p, status: unstagedStatus })
     }
 
     if (stagedStatus === '?' && unstagedStatus === '?') {

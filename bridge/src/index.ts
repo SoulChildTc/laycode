@@ -25,8 +25,12 @@ const app = express()
 
 app.use(cors())
 app.use(express.json({ limit: '50mb' }))
-// 兜底捕获非 JSON 的请求体为 Buffer，供代理原样转发给 opencode（如未来的文件上传等）
-app.use(express.raw({ type: () => true, limit: '50mb' }))
+// 兜底捕获非 JSON 的请求体为 Buffer，供代理原样转发给 opencode（如未来的文件上传中转）。
+// 显式排除 application/json：json 与 raw 职责互斥，不依赖 body-parser 的隐式已解析标记。
+app.use(express.raw({
+  type: (req) => !(req.headers['content-type'] || '').includes('application/json'),
+  limit: '50mb',
+}))
 app.use(morgan('combined', { stream: morganStream }))
 app.use('/static', express.static(path.join(__dirname, '../public')))
 
@@ -218,7 +222,16 @@ app.get('/api/v1/browse', (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
-  const dir = (req.query.path as string) || os.homedir()
+  const raw = req.query.path
+  if (raw !== undefined && typeof raw !== 'string') {
+    return res.status(400).json({ error: 'Invalid path' })
+  }
+  // 归一化后必须是绝对路径：resolve 会折叠 `..`，杜绝相对路径与穿越歧义，
+  // 行为可预测且与 /browse/folder 拒绝穿越的意图一致。
+  const dir = raw ? path.resolve(raw) : os.homedir()
+  if (!path.isAbsolute(dir)) {
+    return res.status(400).json({ error: 'Invalid path' })
+  }
   try {
     const entries = fs.readdirSync(dir, { withFileTypes: true })
       .filter(e => e.isDirectory() && !e.name.startsWith('.'))
@@ -238,9 +251,10 @@ app.post('/api/v1/browse/folder', (req, res) => {
   if (auth !== `Bearer ${config.token}`) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
-  const dir = req.body?.path
-  if (!dir || typeof dir !== 'string') return res.status(400).json({ error: 'Missing path' })
-  if (dir.includes('..')) return res.status(400).json({ error: 'Invalid path' })
+  const raw = req.body?.path
+  if (!raw || typeof raw !== 'string') return res.status(400).json({ error: 'Missing path' })
+  const dir = path.resolve(raw)
+  if (!path.isAbsolute(dir)) return res.status(400).json({ error: 'Invalid path' })
   try {
     fs.mkdirSync(dir, { recursive: true })
     res.json({ success: true })

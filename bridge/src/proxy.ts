@@ -33,14 +33,15 @@ export function createProxyHandler(config: BridgeConfig) {
         body: requestBody,
       })
 
-      const body = await response.text()
+      // 以原始字节读取响应体，避免 .text() 破坏二进制内容（图片/下载等）。
+      const body = Buffer.from(await response.arrayBuffer())
 
       res.status(response.status)
       for (const [key, value] of response.headers) {
         if (key === 'content-encoding' || key === 'content-length') continue
         res.setHeader(key, value)
       }
-      res.setHeader('content-length', Buffer.byteLength(body, 'utf-8'))
+      res.setHeader('content-length', body.length)
 
       res.send(body)
     } catch (err) {
