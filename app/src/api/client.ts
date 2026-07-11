@@ -280,10 +280,16 @@ export class LayCodeClient {
     return res.json()
   }
 
-  async health(): Promise<boolean> {
+  async health(timeoutMs: number = 5000): Promise<boolean> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/v1/health`)
-      return res.ok
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
+      try {
+        const res = await fetch(`${this.baseUrl}/api/v1/health`, { signal: controller.signal })
+        return res.ok
+      } finally {
+        clearTimeout(timer)
+      }
     } catch {
       return false
     }

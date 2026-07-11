@@ -10,6 +10,7 @@ import WorkspaceScreen from '../screens/WorkspaceScreen'
 import SessionScreen from '../screens/SessionScreen'
 import FileExplorerScreen from '../screens/FileExplorerScreen'
 import SettingsScreen from '../screens/SettingsScreen'
+import ServerManagementScreen from '../screens/ServerManagementScreen'
 import TodoSummaryScreen from '../screens/TodoSummaryScreen'
 import GitScreen from '../screens/GitScreen'
 import DiffScreen from '../screens/DiffScreen'
@@ -29,6 +30,7 @@ export type RootStackParamList = {
   Diff: { directory: string; file: string; cached?: boolean }
   Terminal: { directory?: string; ptyID?: string }
   TerminalList: { directory?: string } | undefined
+  ServerManagement: undefined
 }
 
 export type TabParamList = {
@@ -131,6 +133,9 @@ export default function RootNavigator({ screenProps }: { screenProps: ScreenProp
         </Stack.Screen>
         <Stack.Screen name="TerminalList">
           {(props) => <TerminalListScreen {...props} themeMode={themeMode} client={client!} config={config!} />}
+        </Stack.Screen>
+        <Stack.Screen name="ServerManagement">
+          {(props) => <ServerManagementScreen {...props} themeMode={themeMode} config={config} onConnect={onConnect} onDisconnect={onDisconnect} />}
         </Stack.Screen>
         <Stack.Screen name="Git">
           {(props) => <GitScreen {...props} themeMode={themeMode} client={client!} />}
