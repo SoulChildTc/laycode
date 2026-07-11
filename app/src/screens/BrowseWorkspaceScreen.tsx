@@ -60,6 +60,12 @@ export default function BrowseWorkspaceScreen({ navigation, client, themeMode, c
     try {
       const raw = await AsyncStorage.getItem(key)
       const list = raw ? JSON.parse(raw) : []
+      // 去重：同一目录只能添加一次，否则列表出现相同 path，FlatList 的 key 会冲突。
+      if (list.some((w: any) => w.path === dir)) {
+        toast.show('该目录已在工作区中')
+        navigation.goBack()
+        return
+      }
       list.push({ path: dir, name, addedAt: Date.now() })
       await AsyncStorage.setItem(key, JSON.stringify(list))
     } catch {}
