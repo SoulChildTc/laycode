@@ -110,7 +110,7 @@ export default function InputBar({
             const pct = contextLimit ? contextTokens / contextLimit : undefined
             const color = pct != null ? (pct >= 0.8 ? theme.error : pct >= 0.5 ? theme.warning : theme.success) : theme.textTertiary
             return (
-              <View style={[styles.toolbarChip, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={[styles.toolbarChip, styles.toolbarChipFixed, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                 <Feather name="database" size={13} color={color} />
                 <Text style={[styles.toolbarLabel, { color }]} numberOfLines={1}>
                   {formatTokens(contextTokens)}{contextLimit ? ` / ${formatTokens(contextLimit)} · ${Math.round((pct ?? 0) * 100)}%` : ''}
@@ -215,13 +215,16 @@ const styles = StyleSheet.create({
   toolbarChip: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 1,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 10,
     borderWidth: 1,
     gap: 5,
   },
-  toolbarLabel: { fontSize: 12, fontWeight: '600', maxWidth: 200 },
+  // token 用量信息密度高（带百分比），不参与收缩，保证完整显示。
+  toolbarChipFixed: { flexShrink: 0 },
+  toolbarLabel: { fontSize: 12, fontWeight: '600', flexShrink: 1 },
   agentDot: { width: 8, height: 8, borderRadius: 4 },
   inputRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, paddingLeft: 4, paddingRight: 4, paddingVertical: 6, gap: 4 },
   input: { flex: 1, fontSize: 15, lineHeight: 22, maxHeight: 100, paddingVertical: 4 },
