@@ -76,6 +76,23 @@ export function setAuthErrorHandler(handler: ((err: AuthError) => void) | null) 
 }
 function emitGlobalError(err: GlobalError) {
   globalErrorHandler?.(err)
+  // 错误同时驱动连接状态：401 → unauthorized，网络失败 → offline。
+  emitConnState(err instanceof AuthError ? 'unauthorized' : 'offline')
+}
+
+// 连接状态广播：由每个真实请求的成败驱动（方案 A，无独立心跳）。
+//   - 任意请求成功 → 'online'
+//   - 401 → 'unauthorized'
+//   - 网络失败/超时 → 'offline'
+// 供首页等处显示真实连接状态，取代写死的「已连接」。
+export type ConnState = 'online' | 'offline' | 'unauthorized'
+type ConnStateHandler = (state: ConnState) => void
+let connStateHandler: ConnStateHandler | null = null
+export function setConnStateHandler(handler: ConnStateHandler | null) {
+  connStateHandler = handler
+}
+function emitConnState(state: ConnState) {
+  connStateHandler?.(state)
 }
 
 const DEFAULT_TIMEOUT = 30000
@@ -130,7 +147,10 @@ export class LayCodeClient {
       clearTimeout(timer)
     }
 
-    if (res.ok) return res
+    if (res.ok) {
+      emitConnState('online')
+      return res
+    }
     throw await this.toError(res)
   }
 
@@ -185,6 +205,7 @@ export class LayCodeClient {
         || `请求失败（${status}）`
       throw new ApiError(status, message)
     }
+    emitConnState('online')
     return (result.data as T)
   }
 

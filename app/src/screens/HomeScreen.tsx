@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react'
+import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Animated, LayoutAnimation, Platform, UIManager, Modal } from 'react-native'
 import { Swipeable } from 'react-native-gesture-handler'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -6,7 +6,7 @@ import { Feather } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { getTheme, ThemeMode } from '../theme'
-import { LayCodeClient } from '../api/client'
+import { LayCodeClient, setConnStateHandler, ConnState } from '../api/client'
 import { ServerEntry } from '../types'
 import { storageKey } from '../utils/storage'
 import { InputModal, InputField, MetaRow } from '../components/InputModal'
@@ -33,27 +33,39 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
   const theme = getTheme(themeMode)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const [connState, setConnState] = useState<ConnState>('online')
   const [editingWs, setEditingWs] = useState<Workspace | null>(null)
   const [actionWs, setActionWs] = useState<Workspace | null>(null)
   const [aliasText, setAliasText] = useState('')
   const key = storageKey(config.id, 'workspaces')
   const openSwipeRef = useRef<Swipeable | null>(null)
 
+  // 订阅真实连接状态（由每个请求的成败驱动，方案 A，无独立心跳）。
+  useEffect(() => {
+    setConnStateHandler((state) => setConnState(state))
+    return () => setConnStateHandler(null)
+  }, [])
+
   const load = useCallback(async () => {
     try {
       const raw = await AsyncStorage.getItem(key)
-      if (raw) {
-        const list = JSON.parse(raw)
-        setWorkspaces(list)
+      const list = raw ? JSON.parse(raw) : []
+      setWorkspaces(list)
+      if (list.length > 0) {
+        // 有工作区：拉会话数，成功/失败会经统一层自动更新连接状态。
         const m: Record<string, number> = {}
         for (const w of list) {
           try {
-            const list = await client.listSessionsByDirectory(w.path)
-            const nonSubagent = list.filter((s: any) => !s.parentID)
+            const sessions = await client.listSessionsByDirectory(w.path)
+            const nonSubagent = sessions.filter((s: any) => !s.parentID)
             m[w.path] = nonSubagent.length
           } catch { m[w.path] = 0 }
         }
         setCounts(m)
+      } else {
+        // 没有工作区、不会发列表请求：主动探一次连接状态，避免状态停在初始值。
+        const state = await client.verify()
+        setConnState(state === 'ok' ? 'online' : state)
       }
     } catch {}
   }, [client, key])
@@ -151,7 +163,10 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
         <Text style={[styles.title, { color: theme.text }]}>LayCode</Text>
-        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>已连接</Text>
+        <View style={styles.status}>
+          <View style={[styles.statusDot, { backgroundColor: statusColor(theme, connState) }]} />
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{statusLabel(connState)}</Text>
+        </View>
       </View>
 
       <FlatList
@@ -255,6 +270,18 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
   )
 }
 
+function statusLabel(state: ConnState): string {
+  if (state === 'unauthorized') return '密钥失效'
+  if (state === 'offline') return '未连接'
+  return '已连接'
+}
+
+function statusColor(theme: any, state: ConnState): string {
+  if (state === 'unauthorized') return theme.warning
+  if (state === 'offline') return theme.error
+  return theme.success
+}
+
 function SheetItem({ icon, label, theme, onPress, disabled }: { icon: any; label: string; theme: any; onPress: () => void; disabled?: boolean }) {
   return (
     <TouchableOpacity
@@ -279,6 +306,8 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 22, fontWeight: 'bold' },
   subtitle: { fontSize: 13 },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
   cardWrapper: { marginHorizontal: 16, marginBottom: 12 },
   card: { borderRadius: 12, padding: 16, borderWidth: 1 },
   cardName: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
