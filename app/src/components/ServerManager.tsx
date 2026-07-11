@@ -21,7 +21,7 @@ interface Props {
 
 export default function ServerManager({ theme, variant, currentId, onConnected, onDisconnectCurrent }: Props) {
   const { servers, add, update, remove, test, connect } = useServers()
-  const { scan, scanning, bridges } = useDiscovery()
+  const { scan, scanning, bridges, available: mdnsAvailable } = useDiscovery()
 
   const [scannerVisible, setScannerVisible] = useState(false)
   const [connecting, setConnecting] = useState(false)
@@ -114,8 +114,8 @@ export default function ServerManager({ theme, variant, currentId, onConnected, 
         <Feather name="chevron-right" size={20} color="rgba(255,255,255,0.7)" />
       </TouchableOpacity>
 
-      {/* 局域网设备 */}
-      {(scanning || bridges.length > 0) && (
+      {/* 局域网设备（mDNS 不可用的环境，如 Expo Go，整块隐藏） */}
+      {mdnsAvailable && (scanning || bridges.length > 0) && (
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>局域网设备</Text>
@@ -138,7 +138,7 @@ export default function ServerManager({ theme, variant, currentId, onConnected, 
         </View>
       )}
 
-      {!scanning && bridges.length === 0 && (
+      {mdnsAvailable && !scanning && bridges.length === 0 && (
         <TouchableOpacity onPress={scan} style={styles.scanAgain}>
           <Feather name="wifi" size={14} color={theme.accent} style={{ marginRight: 6 }} />
           <Text style={[styles.scanAgainText, { color: theme.accent }]}>扫描局域网设备</Text>
