@@ -35,6 +35,15 @@ export function useServers() {
   }
 
   const add = useCallback(async (entry: Omit<ServerEntry, 'id'>): Promise<ServerEntry> => {
+    // 同一台电脑（host+port 相同）复用已有记录，保留原 id，只更新 token/name。
+    // 否则扫码/手动重连会生成新 id，导致按 serverId 存储的工作区等数据丢失。
+    const existing = servers.find((s) => s.host === entry.host && s.port === entry.port)
+    if (existing) {
+      const merged: ServerEntry = { ...existing, ...entry, id: existing.id }
+      const list = servers.map((s) => (s.id === existing.id ? merged : s))
+      await save(list)
+      return merged
+    }
     const newEntry: ServerEntry = { ...entry, id: genId() }
     const list = [newEntry, ...servers]
     await save(list)

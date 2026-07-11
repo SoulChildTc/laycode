@@ -1,13 +1,13 @@
 import { WebSocketServer, WebSocket } from 'ws'
-import { createServer } from 'http'
+import type { IncomingMessage } from 'http'
+import type { Duplex } from 'stream'
 import { BridgeConfig } from './types.js'
 
+// 事件 WS 不再独占端口，改为挂在主 HTTP server 的 upgrade 事件上（与 PTY WS 共用 8079）。
 let wss: WebSocketServer | null = null
-let httpServer: ReturnType<typeof createServer> | null = null
 
 export function startWebSocketServer(config: BridgeConfig) {
-  httpServer = createServer()
-  wss = new WebSocketServer({ server: httpServer })
+  wss = new WebSocketServer({ noServer: true })
 
   wss.on('connection', (ws) => {
     const sseUrl = `${config.opencodeUrl}/global/event`
@@ -57,15 +57,18 @@ export function startWebSocketServer(config: BridgeConfig) {
     console.error('WebSocket error:', err)
   })
 
-  const wsPort = config.port + 1
-  httpServer.listen(wsPort, () => {
-    console.log(`  WebSocket:   ws://0.0.0.0:${wsPort}/event`)
+  console.log(`  Event WS:    ws://0.0.0.0:${config.port}/event`)
+}
+
+// 由主 server 的 upgrade 事件调用：处理事件流 WS 握手
+export function handleEventUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer) {
+  if (!wss) { socket.destroy(); return }
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss!.emit('connection', ws, req)
   })
 }
 
 export function stopWebSocketServer() {
   wss?.close()
   wss = null
-  httpServer?.close()
-  httpServer = null
 }

@@ -11,7 +11,7 @@ import { createProxyHandler } from './proxy.js'
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname)
 import { startMdns, stopMdns } from './mdns.js'
-import { startWebSocketServer, stopWebSocketServer } from './ws.js'
+import { startWebSocketServer, stopWebSocketServer, handleEventUpgrade } from './ws.js'
 import { ensureOpencode, stopOpencode, restartOpencode } from './opencode.js'
 import { readTodos, addTodo, updateTodo, deleteTodo } from './todos.js'
 import { getStatus, initRepo, getDiff, stageFile, unstageFile, commit, discardFile } from './git.js'
@@ -261,19 +261,23 @@ const server = app.listen(config.port, async () => {
   }
 })
 
-// WebSocket proxy for PTY connections
+// WebSocket upgrade routing (single port): 事件流 WS + PTY 代理 WS 共用主 server
 server.on('upgrade', (req, socket, head) => {
-  if (!req.url) { console.log('[ws-proxy] no url, destroying'); socket.destroy(); return }
+  if (!req.url) { socket.destroy(); return }
   const url = new URL(req.url, 'http://localhost')
-  console.log('[ws-proxy] upgrade request:', req.url)
+
+  // 事件流 WS：/event（原先在 port+1，现统一到主端口）
+  if (url.pathname === '/event') {
+    handleEventUpgrade(req, socket, head)
+    return
+  }
+
   const match = url.pathname.match(/^\/opencode-api\/pty\/([^/]+)\/connect$/)
   if (!match) {
-    console.log('[ws-proxy] no match for:', url.pathname)
     socket.destroy()
     return
   }
 
-  console.log('[ws-proxy] proxying pty:', match[1])
   const targetPath = `/pty/${match[1]}/connect${url.search}`
   const target = new URL(targetPath, config.opencodeUrl)
   console.log('[ws-proxy] target:', target.href)
