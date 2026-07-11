@@ -31,17 +31,16 @@ export default function TerminalView({ navigation, route, themeMode, client, con
   var host = config?.host || 'localhost'
   var port = config?.port || 8079
   var serverId = config?.id || 'default'
-  var { ptyID, status, wsUrl, ticket, errorMessage, create, connect, destroy, reset, resize, setStatus } = useTerminal(client, directory, host, port)
-  var webViewRef = useRef<any>(null)
+  var { create } = useTerminal(client, directory, host, port)
   var eventWsUrl = 'ws://' + host + ':' + (port + 1) + '/event'
 
   usePTYEvents(eventWsUrl, serverId, {
     onDeleted: function(id) {
       setPtys(function(prev) { return prev.filter(function(p) { return p.id !== id }) })
-      if (id === ptyID) {
-        reset()
-        setTimedOut(true)
-      }
+      setActivePtyID(function(cur) {
+        if (cur !== id) return cur
+        return null // 当前 tab 被外部删除，交给下方 effect 决定切到哪个
+      })
     },
   })
   var [ptys, setPtys] = useState<any[]>([])
@@ -49,8 +48,11 @@ export default function TerminalView({ navigation, route, themeMode, client, con
   var [exited, setExited] = useState(false)
   var [timedOut, setTimedOut] = useState(false)
   var mountedRef = useRef(true)
-  var statusRef = useRef(status)
-  statusRef.current = status
+
+  // 当前激活的 tab 为空但仍有其他 tab 时，自动切到第一个
+  useEffect(function() {
+    if (!activePtyID && ptys.length > 0) setActivePtyID(ptys[0].id)
+  }, [activePtyID, ptys])
 
   var kbAnim = useRef(new Animated.Value(0)).current
 
@@ -83,61 +85,59 @@ export default function TerminalView({ navigation, route, themeMode, client, con
   var initTerminal = useCallback(async function() {
     setExited(false)
     setTimedOut(false)
+    // 加载该目录下所有已打开的终端填充 Tab 栏。每个 tab 自己建立连接，这里只决定
+    // 列表和默认激活哪个。带 initialPtyID 时激活它，否则第一个；都为空则新建。
+    var list: any[] = []
+    if (directory) {
+      try { list = await client.listPty(directory) || [] } catch {}
+    }
+    if (list.length > 0) {
+      setPtys(list)
+      var targetID = initialPtyID && list.some(function(p) { return p.id === initialPtyID }) ? initialPtyID : list[0].id
+      setActivePtyID(targetID)
+      return
+    }
     if (initialPtyID) {
-      await connect(initialPtyID)
       setActivePtyID(initialPtyID)
+      setPtys([{ id: initialPtyID }])
       return
     }
     if (!directory) return
-    var list: any[] = []
-    try { list = await client.listPty(directory) || [] } catch {}
-    if (list.length > 0) {
-      setPtys(list)
-      var firstID = list[0].id
-      await connect(firstID)
-      setActivePtyID(firstID)
-    } else {
-      var result = await create()
-      if (result) {
-        setActivePtyID(result.ptyID)
-        setPtys([{ id: result.ptyID, title: 'zsh', cwd: result.ptyID }])
-      }
+    var result = await create()
+    if (result) {
+      setActivePtyID(result.ptyID)
+      var fresh: any[] = []
+      try { fresh = await client.listPty(directory) || [] } catch {}
+      setPtys(fresh.length > 0 ? fresh : [{ id: result.ptyID }])
     }
-  }, [directory, initialPtyID, client, connect, create])
+  }, [directory, initialPtyID, client, create])
 
   useEffect(function() {
     mountedRef.current = true
     initTerminal()
-    var timer = setTimeout(function() {
-      if (mountedRef.current && statusRef.current === 'creating') setTimedOut(true)
-    }, LOADING_TIMEOUT)
     return function() {
       mountedRef.current = false
-      clearTimeout(timer)
-      reset()
     }
   }, [])
 
-  async function handleTabSelect(id: string) {
+  function handleTabSelect(id: string) {
+    // 切换 tab 只改激活项，不重连（各 tab 的 WebView 与连接始终保持）
     if (id === activePtyID) return
     setExited(false)
-    var result = await connect(id)
-    if (result) setActivePtyID(id)
+    setActivePtyID(id)
   }
 
   async function handleTabClose(id: string) {
     var remaining = ptys.filter(function(p) { return p.id !== id })
     setPtys(remaining)
+    await client.removePty(id, directory)
     if (id === activePtyID) {
       if (remaining.length > 0) {
-        await client.removePty(id, directory)
-        await handleTabSelect(remaining[0].id)
+        setActivePtyID(remaining[0].id)
       } else {
-        await client.removePty(id, directory)
-        reset()
+        setActivePtyID(null)
+        navigation.goBack()
       }
-    } else {
-      await client.removePty(id, directory)
     }
   }
 
@@ -148,10 +148,20 @@ export default function TerminalView({ navigation, route, themeMode, client, con
     }
     var result = await create()
     if (result) {
-      setPtys(function(prev) { return [...prev, { id: result!.ptyID, title: 'zsh', cwd: directory }] })
       setActivePtyID(result.ptyID)
+      // 重新拉取列表，用后端返回的真实 title 填充 Tab（而不是硬编码 zsh）
+      await refreshPtys(result.ptyID)
     }
   }
+
+  var refreshPtys = useCallback(async function(fallbackID?: string) {
+    if (!directory) return
+    try {
+      var list = await client.listPty(directory) || []
+      if (list.length > 0) { setPtys(list); return }
+    } catch {}
+    if (fallbackID) setPtys([{ id: fallbackID }])
+  }, [directory, client])
 
   var tabs = useMemo(function() {
     return ptys.map(function(p) {
@@ -159,9 +169,8 @@ export default function TerminalView({ navigation, route, themeMode, client, con
     })
   }, [ptys, activePtyID])
 
-  var showLoading = (status === 'creating' || status === 'idle') && !timedOut
-  var showError = status === 'error' || timedOut
-  var showTerminal = status !== 'creating' && status !== 'idle' && !showError
+  var hasPtys = ptys.length > 0
+  var showLoading = !hasPtys && !timedOut
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
@@ -176,40 +185,40 @@ export default function TerminalView({ navigation, route, themeMode, client, con
       <Animated.View style={{ flex: 1, paddingBottom: kbAnim }}>
         <View style={isWeb ? styles.terminalContainer : styles.webViewContainer}>
           {showLoading && (
-          <View style={styles.center}>
-            <ActivityIndicator size="small" color={theme.accent} />
-            <Text style={[styles.centerText, { color: theme.textTertiary }]}>Starting...</Text>
-          </View>
-        )}
-        {showError && (
-          <View style={styles.center}>
-            <Feather name="alert-circle" size={32} color={theme.error} />
-            <Text style={[styles.errorTitle, { color: theme.error }]}>Connection failed</Text>
-            {errorMessage ? <Text style={[styles.errorDetail, { color: theme.textTertiary }]}>{errorMessage}</Text> : null}
-            <TouchableOpacity style={[styles.retryBtn, { backgroundColor: theme.accent }]} onPress={initTerminal}>
-              <Feather name="refresh-cw" size={14} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.retryText}>Retry</Text>
+            <View style={styles.center}>
+              <ActivityIndicator size="small" color={theme.accent} />
+              <Text style={[styles.centerText, { color: theme.textTertiary }]}>Starting...</Text>
+            </View>
+          )}
+          {timedOut && !hasPtys && (
+            <View style={styles.center}>
+              <Feather name="alert-circle" size={32} color={theme.error} />
+              <Text style={[styles.errorTitle, { color: theme.error }]}>Connection failed</Text>
+              <TouchableOpacity style={[styles.retryBtn, { backgroundColor: theme.accent }]} onPress={initTerminal}>
+                <Feather name="refresh-cw" size={14} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {/* 每个 pty 一个 WebView，全部挂载，仅 active 可见——切换 tab 不重连 */}
+          {ptys.map(function(p) {
+            return isWeb ? (
+              <TerminalViewWeb key={p.id} directory={directory} ptyID={p.id} active={p.id === activePtyID} client={client} setExited={setExited} bridgeHost={host} bridgePort={port} />
+            ) : (
+              <TerminalViewNative key={p.id} directory={directory} ptyID={p.id} active={p.id === activePtyID} client={client} setExited={setExited} bridgeHost={host} bridgePort={port} />
+            )
+          })}
+        </View>
+        {exited && (
+          <View style={styles.exitedBanner}>
+            <Text style={styles.exitedText}>Process exited</Text>
+            <TouchableOpacity style={styles.restartBtn} onPress={initTerminal}>
+              <Feather name="refresh-cw" size={12} color="#f87171" />
+              <Text style={styles.restartText}>Restart</Text>
             </TouchableOpacity>
           </View>
         )}
-        {showTerminal && (
-          isWeb ? (
-            <TerminalViewWeb wsUrl={wsUrl} ticket={ticket} directory={directory} ptyID={ptyID} resize={resize} setExited={setExited} />
-          ) : (
-            <TerminalViewNative wsUrl={wsUrl} ticket={ticket} directory={directory} ptyID={ptyID} resize={resize} setExited={setExited} bridgeHost={host} bridgePort={port} />
-          )
-        )}
-      </View>
-      {exited && (
-        <View style={styles.exitedBanner}>
-          <Text style={styles.exitedText}>Process exited</Text>
-          <TouchableOpacity style={styles.restartBtn} onPress={initTerminal}>
-            <Feather name="refresh-cw" size={12} color="#f87171" />
-            <Text style={styles.restartText}>Restart</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      <TerminalToolbar theme={theme} onKeystroke={terminalKeystroke} visible={showTerminal && !exited} />
+        <TerminalToolbar theme={theme} onKeystroke={terminalKeystroke} visible={hasPtys && !exited} />
       </Animated.View>
     </SafeAreaView>
   )
@@ -367,17 +376,7 @@ function buildTerminalHtml(
   <script src="${baseUrl}/xterm-addon-fit.js"></script>
 
   <script>
-    // 独立探针：先于主脚本执行，验证 script 标签本身能跑、RNWV 是否就绪
-    try {
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        type: 'log',
-        message: 'probe:before-main rnwv=' + (!!window.ReactNativeWebView) + ' T=' + (typeof Terminal)
-      }));
-    } catch (e) {}
-  </script>
-
-  <script>
-    // 统一日志：发到 RN 层 console，前缀便于筛选
+    // 统一日志：仅用于上报错误
     function RNLOG(msg) {
       try {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'log', message: msg }));
@@ -392,15 +391,12 @@ function buildTerminalHtml(
       RNLOG('unhandledrejection: ' + (ev.reason && ev.reason.message ? ev.reason.message : ev.reason));
     });
 
-    RNLOG('script:start typeof Terminal=' + (typeof Terminal) + ' typeof FitAddon=' + (typeof FitAddon));
-
     var fontsReady = false;
     var pageLoaded = false;
 
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(function() {
         fontsReady = true;
-        RNLOG('fonts:ready');
         tryInit();
       });
     } else {
@@ -409,13 +405,11 @@ function buildTerminalHtml(
 
     window.addEventListener('load', function() {
       pageLoaded = true;
-      RNLOG('page:load');
       tryInit();
     });
 
     var inited = false;
     function tryInit() {
-      RNLOG('tryInit fontsReady=' + fontsReady + ' pageLoaded=' + pageLoaded + ' inited=' + inited);
       if (fontsReady && pageLoaded && !inited) {
         inited = true;
         init();
@@ -424,13 +418,11 @@ function buildTerminalHtml(
 
     function init() {
       try {
-        RNLOG('init:start');
         var IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
                      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         var container = document.getElementById('t');
         var cw = container.clientWidth;
         var ch = container.clientHeight;
-        RNLOG('init:container w=' + cw + ' h=' + ch);
 
         var term = new Terminal({
           cursorBlink: true,
@@ -450,23 +442,10 @@ function buildTerminalHtml(
           cols: Math.floor(cw / 9) || 80,
           rows: Math.floor(ch / 20) || 24,
         });
-        RNLOG('init:term created cols=' + term.cols + ' rows=' + term.rows);
 
         var fitAddon = new FitAddon.FitAddon();
         term.loadAddon(fitAddon);
         term.open(container);
-        RNLOG('init:term.open done');
-
-        // 诊断：监听 helper-textarea 的 focus/blur，定位"键盘弹出又缩回"
-        var _ta = container.querySelector('.xterm-helper-textarea');
-        if (_ta) {
-          _ta.addEventListener('focus', function() { RNLOG('ta:focus'); });
-          _ta.addEventListener('blur', function() {
-            var ae = document.activeElement;
-            RNLOG('ta:blur -> activeEl=' + (ae ? (ae.tagName + '.' + (ae.className||'') ) : 'null'));
-          });
-        }
-        window.addEventListener('resize', function() { RNLOG('win:resize innerH=' + window.innerHeight); });
 
         // --- 移动端滚动 + 长按拖动选区 + 手柄 ---
         // 平时 viewport 在顶层处理原生滚动。长按进入选区模式，用 xterm 选区 API
@@ -639,7 +618,6 @@ function buildTerminalHtml(
             } else if (tapFlag) {
               // 单击：退出选区并在用户手势同步栈内聚焦终端，确保安卓弹出键盘
               if (selActive) { exitSelection(); }
-              RNLOG('tap:focus-call selActive=' + selActive + ' handleDrag=' + handleDrag);
               term.focus();
             }
           }, { passive: false });
@@ -740,19 +718,15 @@ function buildTerminalHtml(
         window.__doFit = doFit;
 
         // --- 连接 PTY ---
-        RNLOG('ws:connecting ' + ${JSON.stringify(fullWsUrl)});
         var ws = new WebSocket(${JSON.stringify(fullWsUrl)});
         window.__ws = ws;
 
         ws.onopen = function() {
-          RNLOG('ws:open');
           // 不自动 focus：iOS 上 focus 会立刻弹键盘。进入终端不弹，等用户点击再弹。
           doFit();
         };
 
-        var firstData = true;
         ws.onmessage = function(e) {
-          if (firstData) { firstData = false; RNLOG('ws:first-data type=' + (e.data instanceof Blob ? 'blob' : 'text')); }
           if (e.data instanceof Blob) {
             e.data.arrayBuffer().then(function(b) {
               var u8 = new Uint8Array(b);
@@ -767,7 +741,6 @@ function buildTerminalHtml(
         };
 
         ws.onclose = function(e) {
-          RNLOG('ws:close code=' + e.code);
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'ws-close',
             code: e.code,
@@ -775,7 +748,6 @@ function buildTerminalHtml(
         };
 
         ws.onerror = function() {
-          RNLOG('ws:error');
           window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ws-error' }));
         };
 
@@ -784,8 +756,6 @@ function buildTerminalHtml(
             ws.send(data);
           }
         });
-
-        RNLOG('init:done ready w=' + cw + ' h=' + ch + ' cols=' + term.cols + ' rows=' + term.rows + ' rowsEl=' + (container.querySelector('.xterm-rows') ? 'yes' : 'no'));
       } catch (e) {
         RNLOG('init:ERROR ' + e.message + ' | ' + (e.stack ? String(e.stack).slice(0, 120) : ''));
       }
@@ -795,11 +765,12 @@ function buildTerminalHtml(
 </html>`
 }
 
-function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited, bridgeHost, bridgePort }: any) {
+function TerminalViewNative({ directory, ptyID, active, client, setExited, bridgeHost, bridgePort }: any) {
   var ref = useRef<any>(null)
   var WebView = require('react-native-webview').WebView
   var baseUrl = 'http://' + bridgeHost + ':' + bridgePort + '/static'
   var [toast, setToast] = useState(false)
+  var [conn, setConn] = useState<{ wsUrl: string; ticket: string } | null>(null)
   var toastTimer = useRef<any>(null)
 
   var showCopiedToast = useCallback(function() {
@@ -812,46 +783,58 @@ function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited
     return function() { if (toastTimer.current) clearTimeout(toastTimer.current) }
   }, [])
 
+  // 每个 tab 自己获取 token 并建立连接（只做一次）。切换 tab 只改可见性，连接不断。
   useEffect(function() {
+    var cancelled = false
+    ;(async function() {
+      try {
+        var token = await client.connectPtyToken(ptyID, directory)
+        if (cancelled || !token) return
+        var wsu = 'ws://' + bridgeHost + ':' + bridgePort + '/opencode-api/pty/' + ptyID + '/connect'
+        setConn({ wsUrl: wsu, ticket: token.ticket })
+      } catch {}
+    })()
+    return function() { cancelled = true }
+  }, [ptyID, directory, client, bridgeHost, bridgePort])
+
+  // 每个 tab 各自的 resize 走自己的 ptyID
+  var resize = useCallback(function(cols: number, rows: number) {
+    if (cols > 0 && rows > 0) client.updatePtySize(ptyID, cols, rows, directory).catch(function() {})
+  }, [client, ptyID, directory])
+
+  // 仅当此 tab 为 active 时，把工具栏按键路由到它自己的 WebSocket
+  useEffect(function() {
+    if (!active) return
     terminalPaste = function(data: string) {
       ref.current?.injectJavaScript(
         "try{window.__ws&&window.__ws.send(" + JSON.stringify(data) + ")}catch(e){};true"
       )
     }
     return function() {
-      terminalPaste = null
+      if (terminalPaste) terminalPaste = null
     }
-  }, [])
+  }, [active])
 
   var html = useMemo(function() {
-    if (!wsUrl || !ticket) {
+    if (!conn) {
       return '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="background:#0f0f1a"></body></html>'
     }
-    return buildTerminalHtml(baseUrl, wsUrl, ticket, directory)
-  }, [wsUrl, ticket, directory, baseUrl])
+    return buildTerminalHtml(baseUrl, conn.wsUrl, conn.ticket, directory)
+  }, [conn, directory, baseUrl])
 
   var handleMessage = useCallback(function(event: any) {
     try {
       var msg = JSON.parse(event.nativeEvent.data)
       if (msg.type === 'ws-close') {
-        console.log('[WebView] ws-close code=' + msg.code)
         setExited(true)
-      } else if (msg.type === 'ws-error') {
-        console.log('[WebView] ws-error')
       } else if (msg.type === 'resize' && msg.cols && msg.rows) {
         resize(msg.cols, msg.rows)
       } else if (msg.type === 'copy' && msg.text) {
         Clipboard.setStringAsync(msg.text).then(function() { showCopiedToast() }).catch(function() {})
       } else if (msg.type === 'log') {
         console.log('[WebView]', msg.message)
-      } else if (msg.type === 'probe') {
-        console.log('[WebView] PROBE', JSON.stringify(msg.data))
-      } else if (msg.type === 'probe-error') {
-        console.log('[WebView] PROBE-ERROR', msg.msg)
       }
-    } catch (err) {
-      console.log('[WebView] handleMessage parse error', err)
-    }
+    } catch {}
   }, [setExited, resize, showCopiedToast])
 
   var handleLayout = useCallback(function(e: LayoutChangeEvent) {
@@ -863,25 +846,6 @@ function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited
   }, [resize])
 
   var handleLoad = useCallback(function() {
-    console.log('[WebView] onLoad')
-    // 主动探测 WebView 内部状态，不依赖脚本内部的 postMessage 是否成功
-    var probe = [
-      "try{",
-      "  var s = {",
-      "    hasRNWV: !!window.ReactNativeWebView,",
-      "    typeofTerminal: typeof Terminal,",
-      "    typeofFitAddon: typeof FitAddon,",
-      "    scriptRan: typeof RNLOG,",
-      "    inited: (typeof inited!=='undefined')?inited:'n/a',",
-      "    tEl: !!document.getElementById('t'),",
-      "    rowsEl: !!document.querySelector('.xterm-rows'),",
-      "    bodyHTML: document.body ? document.body.innerHTML.length : -1",
-      "  };",
-      "  window.ReactNativeWebView.postMessage(JSON.stringify({type:'probe', data:s}));",
-      "}catch(e){window.ReactNativeWebView.postMessage(JSON.stringify({type:'probe-error',msg:String(e)}));}",
-      "true;"
-    ].join('')
-    ref.current?.injectJavaScript(probe)
     ref.current?.injectJavaScript("try{window.__doFit&&window.__doFit()}catch(e){};true;")
   }, [])
 
@@ -894,7 +858,11 @@ function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited
   }, [])
 
   return (
-    <View style={{ flex: 1 }} onLayout={handleLayout}>
+    <View
+      style={[StyleSheet.absoluteFill, { opacity: active ? 1 : 0, zIndex: active ? 1 : 0 }]}
+      pointerEvents={active ? 'auto' : 'none'}
+      onLayout={handleLayout}
+    >
       <WebView
         ref={ref}
         source={{ html: html || '<html><body style="background:#0f0f1a"></body></html>' }}
@@ -928,7 +896,7 @@ function TerminalViewNative({ wsUrl, ticket, directory, ptyID, resize, setExited
   )
 }
 
-function TerminalViewWeb({ wsUrl, ticket, directory, ptyID, resize, setExited }: any) {
+function TerminalViewWeb({ directory, ptyID, active, client, setExited, bridgeHost, bridgePort }: any) {
   var divRef = useRef<HTMLDivElement>(null)
 
   useEffect(function() {
@@ -939,14 +907,21 @@ function TerminalViewWeb({ wsUrl, ticket, directory, ptyID, resize, setExited }:
   }, [])
 
   useEffect(function() {
-    if (!divRef.current || !wsUrl || !ticket) return
+    if (!divRef.current) return
     var disposed = false
     var term: any = null
     var ws: WebSocket | null = null
     var ro: ResizeObserver | null = null
 
+    function doResize(cols: number, rows: number) {
+      if (cols > 0 && rows > 0) client.updatePtySize(ptyID, cols, rows, directory).catch(function() {})
+    }
+
     async function init() {
       try {
+        var token = await client.connectPtyToken(ptyID, directory)
+        if (disposed || !token) return
+        var wsUrl = 'ws://' + bridgeHost + ':' + bridgePort + '/opencode-api/pty/' + ptyID + '/connect'
         var m = await import('xterm')
         var fa = await import('xterm-addon-fit')
         if (disposed || !divRef.current) return
@@ -969,7 +944,7 @@ function TerminalViewWeb({ wsUrl, ticket, directory, ptyID, resize, setExited }:
         terminalPaste = function(data: string) { term.paste(data) }
 
         var dirParam = directory ? '&directory=' + encodeURIComponent(directory) : ''
-        var fullUrl = wsUrl + '?ticket=' + encodeURIComponent(ticket) + '&cursor=0' + dirParam
+        var fullUrl = wsUrl + '?ticket=' + encodeURIComponent(token.ticket) + '&cursor=0' + dirParam
         ws = new WebSocket(fullUrl)
         ws.onopen = function() { term.focus() }
         ws.onmessage = function(ev) {
@@ -984,7 +959,7 @@ function TerminalViewWeb({ wsUrl, ticket, directory, ptyID, resize, setExited }:
         term.onData(function(data: string) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(data) })
 
         ro = new ResizeObserver(function() {
-          try { fitAddon.fit(); var c = Math.floor((divRef.current!.clientWidth || 800) / 9); var r = Math.floor((divRef.current!.clientHeight || 400) / 20); resize(c, r) } catch {}
+          try { fitAddon.fit(); var c = Math.floor((divRef.current!.clientWidth || 800) / 9); var r = Math.floor((divRef.current!.clientHeight || 400) / 20); doResize(c, r) } catch {}
         })
         ro.observe(divRef.current)
 } catch {}
@@ -992,9 +967,9 @@ function TerminalViewWeb({ wsUrl, ticket, directory, ptyID, resize, setExited }:
 
     init()
     return function() { disposed = true; if (ro) ro.disconnect(); if (ws) ws.close(); if (term) term.dispose() }
-  }, [wsUrl, ticket, directory, resize, setExited])
+  }, [ptyID, directory, client, setExited, bridgeHost, bridgePort])
 
-  return <div ref={divRef} style={{ width: '100%', height: '100%', background: '#0f0f1a' }} />
+  return <div ref={divRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: '#0f0f1a', opacity: active ? 1 : 0, zIndex: active ? 1 : 0, pointerEvents: active ? 'auto' : 'none' }} />
 }
 
 var styles = StyleSheet.create({

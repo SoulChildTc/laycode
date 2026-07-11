@@ -80,7 +80,8 @@ usePTYEvents(eventWsUrl, serverId, {
     return { dir: dir, terminals: groups.filter(function(g) { return g.directory === dir }) }
   })
 
-  var pickerDirs: string[] = dirs.length > 0 ? dirs : ([] as string[])
+  // 新建终端时可选的工作区：已打开过的工作区(knownDirs) ∪ 已有终端的目录，去重
+  var pickerWorkspaces: string[] = [...new Set([...knownDirList, ...dirs])]
 
   function handlePress(ptyID: string, dir: string) {
     navigation.push('Terminal', { ptyID: ptyID, directory: dir })
@@ -167,26 +168,10 @@ usePTYEvents(eventWsUrl, serverId, {
       <Modal visible={showDirPicker} transparent animationType="fade" onRequestClose={() => setShowDirPicker(false)}>
         <TouchableOpacity style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }} activeOpacity={1} onPress={() => setShowDirPicker(false)}>
           <View style={{ backgroundColor: theme.surface, borderRadius: 14, padding: 16, width: '80%', maxHeight: 400 }}>
-            <Text style={{ color: theme.text, fontSize: 16, fontWeight: '600', marginBottom: 12 }}>Select Workspace</Text>
-            {grouped.length > 0 ? (
+            <Text style={{ color: theme.text, fontSize: 16, fontWeight: '600', marginBottom: 12 }}>选择工作区</Text>
+            {pickerWorkspaces.length > 0 ? (
               <FlatList
-                data={grouped}
-                keyExtractor={function(g) { return g.dir }}
-                renderItem={function({ item: g }) {
-                  return (
-                    <TouchableOpacity
-                      style={{ paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: theme.border }}
-                      onPress={function() { setShowDirPicker(false); navigation.push('Terminal', { directory: g.dir }) }}
-                    >
-                      <Text style={{ color: theme.text, fontSize: 14 }}>{g.dir.split('/').pop() || g.dir}</Text>
-                      <Text style={{ color: theme.textTertiary, fontSize: 11, marginTop: 2 }}>{g.dir}</Text>
-                    </TouchableOpacity>
-                  )
-                }}
-              />
-            ) : knownDirList.length > 0 ? (
-              <FlatList
-                data={knownDirList}
+                data={pickerWorkspaces}
                 keyExtractor={function(d) { return d }}
                 renderItem={function({ item: dir }) {
                   return (
@@ -202,7 +187,7 @@ usePTYEvents(eventWsUrl, serverId, {
               />
             ) : (
               <Text style={{ color: theme.textTertiary, fontSize: 13, textAlign: 'center', padding: 20 }}>
-                No workspaces found. Open a workspace first.
+                还没有工作区。先打开一个工作区或会话。
               </Text>
             )}
           </View>

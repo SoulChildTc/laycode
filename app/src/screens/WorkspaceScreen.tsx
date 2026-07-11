@@ -11,6 +11,7 @@ import { LayCodeClient } from '../api/client'
 import type { Session } from '@opencode-ai/sdk'
 import type { Agent, ServerEntry } from '../types'
 import { storageKey } from '../utils/storage'
+import { addKnownDir } from '../hooks/useTerminalStore'
 import { InputModal, InputField, MetaRow } from '../components/InputModal'
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -42,6 +43,8 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
 
   const load = useCallback(async () => {
     setLoading(true)
+    // 记录该工作区目录，供全局终端"新建时选工作区"列出
+    if (directory && config?.id) { addKnownDir(config.id, directory).catch(function() {}) }
     try {
       const list = await client.listSessionsByDirectory(directory)
       const filtered = list.filter((s: any) => !s.parentID)
@@ -49,7 +52,7 @@ export default function WorkspaceScreen({ route, navigation, client, themeMode, 
       setSessions(filtered)
     } catch {}
     setLoading(false)
-  }, [directory, client])
+  }, [directory, client, config])
 
   useFocusEffect(useCallback(() => { load() }, [load]))
 
