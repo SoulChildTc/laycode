@@ -4,6 +4,7 @@
   "private": true,
   "description": "LayCode monorepo — bridge (laycode-cli) 与移动端 App",
   "type": "module",
+  "packageManager": "pnpm@11.10.0",
   "engines": {
     "node": ">=18"
   },
