@@ -14,7 +14,7 @@ const bump = process.argv[2]
 const dryRun = process.argv.includes('--dry-run')
 
 if (!['patch', 'minor', 'major'].includes(bump)) {
-  console.error('用法：pnpm release <patch|minor|major> [--dry-run]')
+  console.error('用法：pnpm release:bridge <patch|minor|major> [--dry-run]')
   process.exit(1)
 }
 

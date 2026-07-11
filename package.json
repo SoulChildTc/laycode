@@ -18,6 +18,9 @@
     "build:preview-apk": "cd app && npx eas-cli build --platform android --profile preview",
     "build:prod-apk": "cd app && npx eas-cli build --platform android --profile production-apk",
     "build:prod-aab": "cd app && npx eas-cli build --platform android --profile production-aab",
-    "release": "node scripts/release.mjs"
+    "release:bridge": "node scripts/release.mjs",
+    "release:apk": "gh workflow run build-release.yml -f profile=production-apk",
+    "release:aab": "gh workflow run build-release.yml -f profile=production-aab",
+    "release:preview": "gh workflow run build-release.yml -f profile=preview"
   }
 }

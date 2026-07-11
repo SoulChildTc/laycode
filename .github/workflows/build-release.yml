@@ -1,0 +1,77 @@
+name: Build & Release (Android)
+
+# 手动触发：在 Actions 页面点 "Run workflow"，或用 gh CLI / pnpm 脚本触发。
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: EAS 构建 profile
+        type: choice
+        default: production-apk
+        options:
+          - production-apk
+          - production-aab
+          - preview
+          - development
+      notes:
+        description: Release 说明（留空则自动根据提交生成）
+        type: string
+        required: false
+
+permissions:
+  contents: write  # 创建 Release、上传产物需要写权限
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install app deps
+        working-directory: app
+        run: npm install
+
+      # 读取 app/app.json 的 version，拼出 tag：app-v<version>
+      - name: Resolve version
+        id: ver
+        run: |
+          VERSION=$(node -p "require('./app/app.json').expo.version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=app-v$VERSION" >> "$GITHUB_OUTPUT"
+
+      # 云端构建并等待完成，拿到产物下载地址
+      - name: EAS build
+        id: build
+        working-directory: app
+        run: |
+          URL=$(eas build --platform android --profile "${{ inputs.profile }}" --non-interactive --wait --json | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const a=JSON.parse(d);console.log(a[0].artifacts.buildUrl)})")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Download artifact
+        run: |
+          curl -L -o "laycode-${{ steps.ver.outputs.version }}.${{ inputs.profile == 'production-aab' && 'aab' || 'apk' }}" "${{ steps.build.outputs.url }}"
+
+      # 创建/更新 Release 并上传产物。notes 为空时用 GitHub 自动生成的提交摘要。
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.ver.outputs.tag }}
+          body: ${{ inputs.notes }}
+          generate_release_notes: ${{ inputs.notes == '' }}
+          files: laycode-${{ steps.ver.outputs.version }}.*

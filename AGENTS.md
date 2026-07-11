@@ -32,10 +32,10 @@ App 端在 `app/` 下用 Expo（`npm start`），详见 `app/AGENTS.md`。
 平时推 main 不发版。发版时在根目录一条命令：
 
 ```bash
-pnpm release patch    # 0.1.0 → 0.1.1（修复）
-pnpm release minor    # 0.1.0 → 0.2.0（加功能）
-pnpm release major    # 0.1.0 → 1.0.0（大改）
-pnpm release patch --dry-run   # 演练，不真发
+pnpm release:bridge patch    # 0.1.0 → 0.1.1（修复）
+pnpm release:bridge minor    # 0.1.0 → 0.2.0（加功能）
+pnpm release:bridge major    # 0.1.0 → 1.0.0（大改）
+pnpm release:bridge patch --dry-run   # 演练，不真发
 ```
 
 `scripts/release.mjs` 内部：升级 `laycode-cli` 版本 → 构建 → 发布到 npm（显式官方 registry）。发布失败会自动回滚版本号。
