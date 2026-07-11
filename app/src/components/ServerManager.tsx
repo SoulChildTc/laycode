@@ -210,7 +210,7 @@ export default function ServerManager({ theme, variant, currentId, onConnected, 
               </View>
               <View style={{ flex: 1.6 }}>
                 <Text style={[styles.label, { color: theme.textSecondary }]}>Token</Text>
-                <TextInput style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]} value={token} onChangeText={setToken} placeholder="cli 启动信息里的 token" placeholderTextColor={theme.textTertiary} secureTextEntry />
+                <TextInput style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]} value={token} onChangeText={setToken} placeholder="cli 启动信息里的 token" placeholderTextColor={theme.textTertiary} autoCapitalize="none" autoCorrect={false} autoComplete="off" textContentType="none" spellCheck={false} />
               </View>
             </View>
             {error ? <Text style={styles.error}>{error}</Text> : null}
