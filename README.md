@@ -44,43 +44,39 @@ LayCode 是 [opencode](https://github.com/sst/opencode) 的移动端 companion a
 
 ## 🚀 Quick Start
 
-### 一键启动（推荐）
+### 安装
 
 ```bash
 # 克隆项目
 git clone https://github.com/SoulChildTc/laycode.git
 cd laycode
 
-# 安装依赖
-cd app && npm install
-cd ../bridge && npm install
-cd ..
+# 安装 bridge 依赖（pnpm workspace）
+pnpm install
 
-# 一键启动 Bridge + App
-./start.sh
+# 安装 App 依赖
+cd app && npm install && cd ..
 ```
 
-### 手动启动
+### 启动 Bridge 服务（电脑端）
 
-#### 1. 启动 Bridge 服务
+在项目根目录：
 
 ```bash
-cd bridge
-npm install
-npm run dev
+pnpm bridge
 ```
 
-Bridge 默认运行在 `http://0.0.0.0:8079`。
+会先构建再前台运行 Bridge，`Ctrl+C` 结束。Bridge 默认运行在 `http://0.0.0.0:8079`，启动时打印配对二维码。（别名：`pnpm server`）
 
-#### 2. 启动 App
+### 启动 App（手机端）
+
+在项目根目录：
 
 ```bash
-cd app
-npm install
-npm start
+pnpm app
 ```
 
-用手机扫描 Expo Go 二维码，确保手机和电脑在同一 WiFi 下。
+用手机扫描 Expo Go 二维码，确保手机和电脑在同一 WiFi 下。（别名：`pnpm mobile`）
 
 ### 配对 Token
 
@@ -127,7 +123,6 @@ laycode/
 ├── laycode-alias/    # 别名包（发布为 laycode）
 ├── scripts/          # 发版脚本
 ├── docs/            # 文档
-├── start.sh         # 一键启动脚本
 ├── LICENSE
 └── README.md
 ```

@@ -48,32 +48,21 @@
 git clone https://github.com/<your-username>/laycode.git
 cd laycode
 
-# 2. 安装 App 依赖
-cd app
-npm install
+# 2. 安装 Bridge 依赖（pnpm workspace）
+pnpm install
 
-# 3. 安装 Bridge 依赖
-cd ../bridge
-npm install
-
-# 4. 回到根目录
-cd ..
+# 3. 安装 App 依赖
+cd app && npm install && cd ..
 ```
 
 ### 启动开发环境
 
 ```bash
-# 方式一：一键启动（推荐）
-./start.sh --token <your-opencode-token>
+# 终端 1：启动 Bridge（根目录，Ctrl+C 结束）
+pnpm bridge
 
-# 方式二：分别启动
-# 终端 1：启动 Bridge
-cd bridge
-npm run dev -- --token <your-opencode-token>
-
-# 终端 2：启动 App
-cd app
-npm start
+# 终端 2：启动 App（根目录）
+pnpm app
 ```
 
 ## 📝 代码规范
