@@ -43,12 +43,14 @@ function nextVersion(current, kind) {
   return `${maj}.${min}.${pat + 1}`
 }
 
+const NPM_REGISTRY = 'https://registry.npmjs.org/'
+
 // dry-run：不写版本号、不发布，但照常构建（幂等，只刷新 dist，让演练更接近真实）。
 if (dryRun) {
   const preview = nextVersion(bridgeVer, bump)
   console.log(`\n[dry-run] 当前版本 ${bridgeVer}（两包一致）→ 将 bump 到 ${preview}（未写盘）`)
   run('pnpm', ['--filter', 'laycode-cli', 'build'])
-  run('pnpm', ['publish', '-r', '--access', 'public', '--no-git-checks', '--dry-run'])
+  run('pnpm', ['publish', '-r', '--access', 'public', '--no-git-checks', '--registry', NPM_REGISTRY, '--dry-run'])
   console.log(`\n✅ 演练完成（${bump}，dry-run，未修改版本、未发布）`)
   process.exit(0)
 }
@@ -56,10 +58,20 @@ if (dryRun) {
 // 1. 统一升级所有包版本（别名包依赖用 workspace:*，发布时自动填真实版本，无需手动同步）
 run('pnpm', ['-r', 'exec', 'npm', 'version', bump, '--no-git-tag-version'])
 
-// 2. 构建主包
-run('pnpm', ['--filter', 'laycode-cli', 'build'])
-
-// 3. 递归发布：pnpm 自动按依赖顺序先发 laycode-cli 再发 laycode
-run('pnpm', ['publish', '-r', '--access', 'public', '--no-git-checks'])
+// 2~3. 构建 + 发布。任一步失败则把版本号回滚到 bump 前，避免留下已改版本却未发布的脏状态。
+try {
+  run('pnpm', ['--filter', 'laycode-cli', 'build'])
+  // 显式指定官方 registry：很多人本地默认源是镜像（如淘宝），会导致发布失败或发错地址。
+  run('pnpm', ['publish', '-r', '--access', 'public', '--no-git-checks', '--registry', NPM_REGISTRY])
+} catch (err) {
+  console.error(`\n❌ 发布失败，正在回滚版本号到 ${bridgeVer}...`)
+  try {
+    run('pnpm', ['-r', 'exec', 'npm', 'version', bridgeVer, '--no-git-tag-version', '--allow-same-version'])
+    console.error(`已回滚版本号到 ${bridgeVer}。`)
+  } catch {
+    console.error(`⚠️ 版本号回滚失败，请手动把各 package.json 的 version 改回 ${bridgeVer}。`)
+  }
+  process.exit(1)
+}
 
 console.log(`\n✅ 发布完成（${bump}）`)
