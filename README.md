@@ -120,7 +120,6 @@ laycode/
 │   │   └── types.ts    # 类型定义
 │   ├── public/      # 静态文件
 │   └── package.json
-├── laycode-alias/    # 别名包（发布为 laycode）
 ├── scripts/          # 发版脚本
 ├── docs/            # 文档
 ├── LICENSE

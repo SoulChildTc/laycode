@@ -1,6 +1,5 @@
 packages:
   - bridge
-  - laycode-alias
 
 allowBuilds:
   esbuild: false

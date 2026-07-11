@@ -1,6 +1,6 @@
 {
   "name": "laycode-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "LayCode bridge — run the desktop bridge for the LayCode mobile app",
   "keywords": [

@@ -2,7 +2,7 @@
   "name": "laycode-monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "LayCode monorepo — bridge (laycode-cli) 及其别名包 (laycode)",
+  "description": "LayCode monorepo — bridge (laycode-cli) 与移动端 App",
   "type": "module",
   "engines": {
     "node": ">=18"

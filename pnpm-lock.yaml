@@ -57,12 +57,6 @@ importers:
         specifier: ^5.7.0
         version: 5.7.2
 
-  laycode-alias:
-    dependencies:
-      laycode-cli:
-        specifier: workspace:*
-        version: link:../bridge
-
 packages:
 
   '@esbuild/aix-ppc64@0.28.1':

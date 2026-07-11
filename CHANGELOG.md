@@ -9,7 +9,7 @@
 
 ### Added
 - LayCode App — Expo React Native 移动端应用
-- LayCode Bridge — Express 桥接服务（发布为 `laycode-cli`，别名包 `laycode`）
+- LayCode Bridge — Express 桥接服务（发布为 `laycode-cli`）
 - 会话同步功能
 - 内置终端（xterm.js）
 - 任务管理

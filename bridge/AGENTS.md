@@ -1,6 +1,6 @@
 # Bridge — Desktop Proxy Server
 
-发布为 npm 包 `laycode-cli`（真身，所有逻辑在此）。别名包 `laycode` 仅转发到它。
+发布为 npm 包 `laycode-cli`（所有逻辑在此）。
 
 ## Purpose
 
