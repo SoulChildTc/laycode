@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react'
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Animated, LayoutAnimation, Platform, UIManager } from 'react-native'
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Animated, LayoutAnimation, Platform, UIManager, Modal } from 'react-native'
 import { Swipeable } from 'react-native-gesture-handler'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -34,6 +34,7 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [editingWs, setEditingWs] = useState<Workspace | null>(null)
+  const [actionWs, setActionWs] = useState<Workspace | null>(null)
   const [aliasText, setAliasText] = useState('')
   const key = storageKey(config.id, 'workspaces')
   const openSwipeRef = useRef<Swipeable | null>(null)
@@ -85,6 +86,27 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
     setEditingWs(null)
     setAliasText('')
   }
+
+  const persist = useCallback(async (list: Workspace[]) => {
+    setWorkspaces(list)
+    await AsyncStorage.setItem(key, JSON.stringify(list))
+  }, [key])
+
+  // 长按操作菜单：置顶 / 上移 / 下移
+  const reorder = useCallback(async (path: string, action: 'top' | 'up' | 'down') => {
+    const idx = workspaces.findIndex(w => w.path === path)
+    if (idx < 0) return
+    const list = workspaces.slice()
+    const [item] = list.splice(idx, 1)
+    var target = idx
+    if (action === 'top') target = 0
+    else if (action === 'up') target = Math.max(0, idx - 1)
+    else if (action === 'down') target = Math.min(list.length, idx + 1)
+    list.splice(target, 0, item)
+    LayoutAnimation.configureNext(animCfg)
+    setActionWs(null)
+    await persist(list)
+  }, [workspaces, persist])
 
   const openAliasEdit = (ws: Workspace) => {
     setEditingWs(ws)
@@ -152,6 +174,8 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
               <TouchableOpacity
                 style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}
                 onPress={() => navigation.navigate('Workspace', { directory: item.path, name: displayName(item) })}
+                onLongPress={() => setActionWs(item)}
+                delayLongPress={300}
                 activeOpacity={0.7}
               >
                 <Text style={[styles.cardName, { color: theme.text }]}>{displayName(item)}</Text>
@@ -185,6 +209,27 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
         <Text style={styles.fabText}>＋</Text>
       </TouchableOpacity>
 
+      <Modal visible={actionWs !== null} transparent animationType="fade" onRequestClose={() => setActionWs(null)}>
+        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setActionWs(null)}>
+          <View style={[styles.sheet, { backgroundColor: theme.surface }]}>
+            <Text style={[styles.sheetTitle, { color: theme.text }]} numberOfLines={1}>
+              {actionWs ? displayName(actionWs) : ''}
+            </Text>
+            <SheetItem icon="arrow-up" label="置顶" theme={theme}
+              disabled={!actionWs || workspaces[0]?.path === actionWs.path}
+              onPress={() => actionWs && reorder(actionWs.path, 'top')} />
+            <SheetItem icon="chevron-up" label="上移" theme={theme}
+              disabled={!actionWs || workspaces[0]?.path === actionWs.path}
+              onPress={() => actionWs && reorder(actionWs.path, 'up')} />
+            <SheetItem icon="chevron-down" label="下移" theme={theme}
+              disabled={!actionWs || workspaces[workspaces.length - 1]?.path === actionWs.path}
+              onPress={() => actionWs && reorder(actionWs.path, 'down')} />
+            <SheetItem icon="edit-2" label="设置别名" theme={theme}
+              onPress={() => { const ws = actionWs; setActionWs(null); if (ws) openAliasEdit(ws) }} />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <InputModal
         visible={editingWs !== null}
         title="设置别名"
@@ -210,9 +255,22 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
   )
 }
 
+function SheetItem({ icon, label, theme, onPress, disabled }: { icon: any; label: string; theme: any; onPress: () => void; disabled?: boolean }) {
+  return (
+    <TouchableOpacity
+      style={[styles.sheetItem, disabled && { opacity: 0.35 }]}
+      disabled={disabled}
+      onPress={onPress}
+      activeOpacity={0.6}
+    >
+      <Feather name={icon} size={18} color={theme.text} style={{ marginRight: 12 }} />
+      <Text style={[styles.sheetItemText, { color: theme.text }]}>{label}</Text>
+    </TouchableOpacity>
+  )
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
+  container: { flex: 1 },  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -262,4 +320,9 @@ const styles = StyleSheet.create({
     elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4,
   },
   fabText: { color: '#fff', fontSize: 28, lineHeight: 30 },
+  sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  sheet: { borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingTop: 8, paddingBottom: 28, paddingHorizontal: 8 },
+  sheetTitle: { fontSize: 13, fontWeight: '600', paddingHorizontal: 12, paddingVertical: 10, opacity: 0.7 },
+  sheetItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 12, borderRadius: 10 },
+  sheetItemText: { fontSize: 16 },
 })
