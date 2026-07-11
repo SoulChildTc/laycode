@@ -8,10 +8,10 @@
     "node": ">=18"
   },
   "scripts": {
-    "bridge": "pnpm --filter laycode-cli build && node bridge/dist/cli.js run",
-    "server": "pnpm bridge",
+    "bridge": "pnpm --filter laycode-cli build && node bridge/dist/cli.js start --foreground",
+    "server": "pnpm --filter laycode-cli build && node bridge/dist/cli.js start --foreground",
     "app": "cd app && npm start",
-    "mobile": "pnpm app",
+    "mobile": "cd app && npm start",
     "build": "pnpm --filter laycode-cli build",
     "release": "node scripts/release.mjs"
   }

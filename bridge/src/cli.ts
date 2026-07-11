@@ -44,15 +44,25 @@ async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
   return !isRunning(pid)
 }
 
-// 前台运行：直接引入 index.js（import 即启动服务），并开启文件日志
-async function cmdRun() {
-  const { initFileLogger } = await import('./logger.js')
-  initFileLogger()
+// 实际运行服务体：前台走控制台日志，后台子进程走文件日志。import index.js 即启动服务。
+async function cmdServe(foreground: boolean) {
+  if (foreground) {
+    const { initConsoleLogger } = await import('./logger.js')
+    initConsoleLogger()
+  } else {
+    const { initFileLogger } = await import('./logger.js')
+    initFileLogger()
+  }
   await import('./index.js')
 }
 
-// 后台运行：spawn 一个 detached 的 `run` 子进程，等健康检查通过后再报成功
+// start：默认后台（spawn detached 守护进程 + 文件日志）；带 --foreground 则前台运行（控制台日志）。
 async function cmdStart(extraArgs: string[]) {
+  if (extraArgs.includes('--foreground')) {
+    await cmdServe(true)
+    return
+  }
+
   ensureDirs()
   const existing = readPid()
   if (existing && isRunning(existing)) {
@@ -66,7 +76,8 @@ async function cmdStart(extraArgs: string[]) {
 
   const out = fs.openSync(LOG_PATH, 'a')
   const err = fs.openSync(LOG_PATH, 'a')
-  const child = spawn(process.execPath, [path.join(__dirname, 'cli.js'), 'run', ...extraArgs], {
+  // 子进程用内部标记 __serve 直接运行服务（文件日志），不再多 spawn 一层。
+  const child = spawn(process.execPath, [path.join(__dirname, 'cli.js'), '__serve', ...extraArgs], {
     detached: true,
     stdio: ['ignore', out, err],
     windowsHide: true, // Windows 下不弹出控制台黑框
@@ -186,13 +197,14 @@ function usage() {
 
 用法:
   laycode-cli                无参数默认后台启动（等同 start）
-  laycode-cli run            前台运行（Ctrl+C 停止）
-  laycode-cli start          后台运行（守护进程）
+  laycode-cli start          后台运行（守护进程，日志写文件）
+  laycode-cli start --foreground   前台运行（日志打控制台，Ctrl+C 停止）
   laycode-cli stop           停止后台服务
   laycode-cli status         查看运行状态
   laycode-cli logs [-f]      查看日志（-f 持续跟踪）
 
-选项（可跟在 run/start 后）:
+选项（可跟在 start 后）:
+  --foreground     前台运行，日志直接输出到控制台
   --port <n>       指定端口（默认持久化配置或 8079）
   --token <t>      指定 token（默认使用持久化的强 token）
   --opencode-url   连接外部 opencode 实例
@@ -205,8 +217,9 @@ const argv = process.argv.slice(2)
 const [cmd, ...rest] = argv
 
 switch (cmd) {
-  case 'run':
-    cmdRun()
+  case '__serve':
+    // 内部命令：由 start 的后台守护进程调用，直接以文件日志运行服务。
+    cmdServe(false)
     break
   case 'start':
     cmdStart(rest)

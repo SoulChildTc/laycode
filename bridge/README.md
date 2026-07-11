@@ -14,27 +14,28 @@ opencode 已通过 `@opencode-ai/sdk` 内置托管，无需单独安装。若想
 ## 快速开始
 
 ```bash
-npx laycode-cli run
+npx laycode-cli start
 ```
 
-启动后终端会打印一个二维码，用 LayCode App 扫码即可连接（确保手机和电脑在同一局域网）。首次运行会在 `~/.laycode/config.json` 生成一个固定的强 Token，之后重连无需重新配对。
+启动后服务在后台运行，终端会打印一个二维码，用 LayCode App 扫码即可连接（确保手机和电脑在同一局域网）。首次运行会在 `~/.laycode/config.json` 生成一个固定的强 Token，之后重连无需重新配对。想在前台实时看日志，用 `npx laycode-cli start --foreground`（`Ctrl+C` 停止）。
 
 ## 命令
 
 | 命令 | 说明 |
 | --- | --- |
-| `laycode-cli run` | 前台运行（Ctrl+C 停止） |
-| `laycode-cli start` | 后台运行（守护进程） |
+| `laycode-cli start` | 后台运行（守护进程，日志写文件） |
+| `laycode-cli start --foreground` | 前台运行，日志打控制台（Ctrl+C 停止） |
 | `laycode-cli stop` | 停止后台服务 |
 | `laycode-cli status` | 查看运行状态 |
 | `laycode-cli logs [-f]` | 查看日志（`-f` 持续跟踪） |
 
 ## 选项
 
-可跟在 `run` / `start` 之后：
+可跟在 `start` 之后：
 
 | 选项 | 说明 |
 | --- | --- |
+| `--foreground` | 前台运行，日志直接输出到控制台 |
 | `--port <n>` | 指定端口（默认使用持久化配置或 `8079`） |
 | `--token <t>` | 指定 Token（默认使用持久化的强 Token） |
 | `--opencode-url <url>` | 连接外部 opencode 实例，而非托管一个 |

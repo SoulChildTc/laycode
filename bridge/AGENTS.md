@@ -18,7 +18,7 @@ App –WS(/opencode-api/pty/…)–> Bridge –(裸 TCP 透传)–> Opencode PTY
 
 | File | Purpose |
 |------|---------|
-| `src/cli.ts` | CLI 入口（`laycode-cli`）。子命令 run/start/stop/status/logs、`--version`；无参数默认后台 start。 |
+| `src/cli.ts` | CLI 入口（`laycode-cli`）。子命令 start/stop/status/logs、`--version`；`start` 默认后台守护，`start --foreground` 前台；无参数默认后台 start。 |
 | `src/index.ts` | Express server 入口。装配路由、auth、proxy、todo/git API、SSE、WS upgrade 路由、mDNS、opencode 进程。 |
 | `src/config.ts` | 解析 CLI 参数 `--token`/`--port`/`--opencode-url`，合并持久化配置。 |
 | `src/store.ts` | 持久化到 `~/.laycode/config.json`；首次运行用 crypto 生成随机强 token 并固定不变。 |
@@ -35,16 +35,16 @@ App –WS(/opencode-api/pty/…)–> Bridge –(裸 TCP 透传)–> Opencode PTY
 ## CLI 命令
 
 ```bash
-laycode-cli            # 无参数：默认后台启动（等同 start）
-laycode-cli run        # 前台运行（Ctrl+C 停止）
-laycode-cli start      # 后台守护进程；spawn 后轮询 /api/v1/health 确认真起来才报成功
+laycode-cli                     # 无参数：默认后台启动（等同 start）
+laycode-cli start               # 后台守护进程；spawn 后轮询 /api/v1/health 确认真起来才报成功
+laycode-cli start --foreground  # 前台运行，日志打控制台（Ctrl+C 停止）
 laycode-cli stop       # 优雅 SIGTERM + 轮询确认退出，超时 SIGKILL 兜底（Windows 用 taskkill /T）
 laycode-cli status     # 查看运行状态
 laycode-cli logs [-f]  # 查看日志，-f 用 fs.watch 持续跟踪（不依赖系统 tail）
 laycode-cli --version  # 显示版本
 ```
 
-选项可跟在 `run`/`start` 后：`--port <n>`、`--token <t>`、`--opencode-url <url>`（连接外部 opencode，此时不托管进程）。
+选项可跟在 `start` 后：`--foreground`（前台运行）、`--port <n>`、`--token <t>`、`--opencode-url <url>`（连接外部 opencode，此时不托管进程）。日志：前台打控制台不落盘，后台写 `~/.laycode/logs/bridge.log`。内部 `__serve` 命令由后台守护进程调用，勿手动使用。
 
 ## Route Behavior
 

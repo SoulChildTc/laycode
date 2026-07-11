@@ -40,10 +40,10 @@
     "win32"
   ],
   "scripts": {
-    "dev": "tsx watch src/cli.ts run",
+    "dev": "tsx watch src/cli.ts start --foreground",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "npm run clean && tsc",
-    "start": "node dist/cli.js run",
+    "start": "node dist/cli.js start",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

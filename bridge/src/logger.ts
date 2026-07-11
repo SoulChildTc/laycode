@@ -5,6 +5,8 @@ const MAX_SIZE = 5 * 1024 * 1024 // 单个日志文件 5MB 上限
 const MAX_FILES = 3               // 保留 bridge.log + .1 + .2
 
 let stream: fs.WriteStream | null = null
+// 前台模式：morgan 直接打控制台，不落盘。后台模式：写文件。
+let foreground = false
 
 function rotateIfNeeded() {
   try {
@@ -46,10 +48,19 @@ export function initFileLogger() {
   }
 }
 
+// 前台模式：不写文件，console 保持原样输出，morgan 改为直接打控制台。
+export function initConsoleLogger() {
+  foreground = true
+}
+
 // 给 morgan 用的写入流
 export const morganStream = {
   write: (msg: string) => {
-    stream?.write(`[${ts()}] ${msg.trimEnd()}\n`)
+    if (foreground) {
+      process.stdout.write(`[${ts()}] ${msg.trimEnd()}\n`)
+    } else {
+      stream?.write(`[${ts()}] ${msg.trimEnd()}\n`)
+    }
   },
 }
 
