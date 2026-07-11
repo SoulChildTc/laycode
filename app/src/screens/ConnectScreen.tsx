@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { View, Text, StyleSheet, ActivityIndicator, ScrollView } from 'react-native'
+import { View, Text, StyleSheet, ActivityIndicator, ScrollView, Image } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { getTheme, ThemeMode } from '../theme'
 import { ServerEntry } from '../types'
@@ -40,8 +40,8 @@ export default function ConnectScreen({ themeMode, onConnect }: Props) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
         <View style={styles.header}>
-          <View style={[styles.logo, { backgroundColor: theme.accent }]}>
-            <Text style={styles.logoText}>L</Text>
+          <View style={[styles.logo, { backgroundColor: theme.surface }]}>
+            <Image source={require('../../assets/logo-mark.png')} style={styles.logoMark} />
           </View>
           <Text style={[styles.title, { color: theme.text }]}>LayCode</Text>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>自动连接中...</Text>
@@ -55,8 +55,8 @@ export default function ConnectScreen({ themeMode, onConnect }: Props) {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <View style={[styles.logo, { backgroundColor: theme.accent }]}>
-            <Text style={styles.logoText}>L</Text>
+          <View style={[styles.logo, { backgroundColor: theme.surface }]}>
+            <Image source={require('../../assets/logo-mark.png')} style={styles.logoMark} />
           </View>
           <Text style={[styles.title, { color: theme.text }]}>LayCode</Text>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>躺着码，一样 Vibe</Text>
@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
   scroll: { paddingBottom: 40, paddingHorizontal: 20 },
   header: { alignItems: 'center', paddingTop: 36, paddingBottom: 24 },
   logo: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  logoText: { color: '#fff', fontSize: 28, fontWeight: 'bold' },
+  logoMark: { width: 40, height: 40 },
   title: { fontSize: 26, fontWeight: 'bold', marginBottom: 4 },
   subtitle: { fontSize: 14 },
 })
