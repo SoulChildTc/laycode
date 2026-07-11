@@ -69,6 +69,7 @@ async function cmdStart(extraArgs: string[]) {
   const child = spawn(process.execPath, [path.join(__dirname, 'cli.js'), 'run', ...extraArgs], {
     detached: true,
     stdio: ['ignore', out, err],
+    windowsHide: true, // Windows 下不弹出控制台黑框
   })
   child.unref()
   if (!child.pid) {
@@ -101,6 +102,25 @@ async function cmdStop() {
   if (!pid || !isRunning(pid)) {
     console.log('LayCode bridge 未在运行')
     try { fs.unlinkSync(PID_PATH) } catch {}
+    return
+  }
+
+  if (process.platform === 'win32') {
+    // Windows 不支持 POSIX 信号的优雅关闭，用 taskkill /T 终止整个进程树（含 opencode 子进程）
+    try {
+      const { execFileSync } = await import('child_process')
+      execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'pipe' })
+    } catch (err: any) {
+      console.error(`停止失败: ${err.message}`)
+      process.exit(1)
+    }
+    await waitForExit(pid, 5000)
+    if (isRunning(pid)) {
+      console.error(`停止失败：进程 ${pid} 仍在运行`)
+      process.exit(1)
+    }
+    try { fs.unlinkSync(PID_PATH) } catch {}
+    console.log(`已停止 LayCode bridge (pid ${pid})`)
     return
   }
 

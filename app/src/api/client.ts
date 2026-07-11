@@ -31,7 +31,7 @@ export class LayCodeClient {
   constructor(config: ServerConfig) {
     this.baseUrl = `http://${config.host}:${config.port}`
     this.token = config.token
-    this.wsUrl = `ws://${config.host}:${config.port}/event`
+    this.wsUrl = `ws://${config.host}:${config.port}/event?token=${encodeURIComponent(config.token)}`
     this.client = createV1Client({
       baseUrl: `${this.baseUrl}/opencode-api`,
       headers: { Authorization: `Bearer ${config.token}` },

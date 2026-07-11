@@ -7,7 +7,7 @@
 ## 环境要求
 
 - Node.js >= 18
-- macOS 或 Linux
+- macOS、Linux 或 Windows
 - [opencode](https://github.com/anomalyco/opencode) 已安装并可在命令行调用
 
 ## 快速开始
@@ -37,6 +37,12 @@ npx laycode-cli run
 | `--port <n>` | 指定端口（默认使用持久化配置或 `8079`） |
 | `--token <t>` | 指定 Token（默认使用持久化的强 Token） |
 | `--opencode-url <url>` | 连接外部 opencode 实例，而非托管一个 |
+
+## 环境变量
+
+| 变量 | 说明 |
+| --- | --- |
+| `LAYCODE_HOST` | 手动指定二维码/配对使用的局域网 IP。多网卡（如装了 Docker、VPN）导致自动探测选错地址时使用。 |
 
 ## 数据目录
 

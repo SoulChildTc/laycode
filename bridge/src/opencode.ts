@@ -1,6 +1,6 @@
 import { createOpencodeServer } from '@opencode-ai/sdk/server'
 import { BridgeConfig } from './types.js'
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
 import net from 'net'
 
 const MANAGED_PORT = 4097
@@ -9,13 +9,35 @@ const STARTUP_TIMEOUT = 10000
 
 let server: { url: string; close(): void } | null = null
 
+// 跨平台释放端口：找到占用端口的进程并结束它。
+// Windows 用 netstat + taskkill，Unix 用 lsof + kill。
 function killProcessOnPort(port: number) {
   try {
-    const pid = execSync(`lsof -ti :${port}`, { encoding: 'utf-8', timeout: 3000 }).trim()
-    if (pid) {
-      console.log(`  Port ${port}:   Found PID ${pid}, killing...`)
-      execSync(`kill -9 ${pid}`, { timeout: 3000 })
-      console.log(`  Port ${port}:   Freed`)
+    if (process.platform === 'win32') {
+      // netstat 输出形如：TCP 0.0.0.0:4097 0.0.0.0:0 LISTENING 1234
+      const out = execFileSync('netstat', ['-ano'], { encoding: 'utf-8', timeout: 3000 })
+      const pids = new Set<string>()
+      for (const line of out.split(/\r?\n/)) {
+        if (!line.includes('LISTENING')) continue
+        if (!new RegExp(`[:.]${port}\\b`).test(line)) continue
+        const pid = line.trim().split(/\s+/).pop()
+        if (pid && /^\d+$/.test(pid) && pid !== '0') pids.add(pid)
+      }
+      for (const pid of pids) {
+        console.log(`  Port ${port}:   Found PID ${pid}, killing...`)
+        execFileSync('taskkill', ['/F', '/PID', pid], { timeout: 3000, stdio: 'pipe' })
+        console.log(`  Port ${port}:   Freed`)
+      }
+    } else {
+      const pid = execFileSync('lsof', ['-ti', `:${port}`], { encoding: 'utf-8', timeout: 3000 }).trim()
+      if (pid) {
+        console.log(`  Port ${port}:   Found PID ${pid}, killing...`)
+        // 可能有多个 PID（每行一个），逐个结束
+        for (const p of pid.split(/\s+/).filter(Boolean)) {
+          execFileSync('kill', ['-9', p], { timeout: 3000 })
+        }
+        console.log(`  Port ${port}:   Freed`)
+      }
     }
   } catch {}
 }

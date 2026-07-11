@@ -34,9 +34,15 @@
   "engines": {
     "node": ">=18"
   },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
   "scripts": {
     "dev": "tsx watch src/cli.ts run",
-    "build": "rm -rf dist && tsc",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc",
     "start": "node dist/cli.js run",
     "prepublishOnly": "npm run build"
   },

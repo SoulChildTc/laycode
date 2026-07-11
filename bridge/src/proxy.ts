@@ -12,6 +12,17 @@ export function createProxyHandler(config: BridgeConfig) {
       if (value) headers[key] = Array.isArray(value) ? value.join(', ') : value
     }
 
+    // 按请求体的实际形态转发：JSON 请求体经 express.json 解析为对象，需重新序列化；
+    // 其他类型经 express.raw 保留为 Buffer，原样透传。空体不发。
+    let requestBody: string | Buffer | undefined
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      if (Buffer.isBuffer(req.body)) {
+        requestBody = req.body.length > 0 ? req.body : undefined
+      } else if (req.body && Object.keys(req.body).length > 0) {
+        requestBody = JSON.stringify(req.body)
+      }
+    }
+
     try {
       const response = await fetch(targetUrl, {
         method: req.method,
@@ -19,7 +30,7 @@ export function createProxyHandler(config: BridgeConfig) {
           ...headers,
           'host': new URL(config.opencodeUrl).host,
         },
-        body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined,
+        body: requestBody,
       })
 
       const body = await response.text()

@@ -1,9 +1,9 @@
 import fs from 'fs'
 import path from 'path'
-import os from 'os'
 import crypto from 'crypto'
+import { HOME_DIR } from './paths.js'
 
-const TODOS_DIR = path.join(os.homedir(), '.laycode', 'todos')
+const TODOS_DIR = path.join(HOME_DIR, 'todos')
 
 interface Todo {
   id: string

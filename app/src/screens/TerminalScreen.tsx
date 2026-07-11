@@ -32,7 +32,7 @@ export default function TerminalView({ navigation, route, themeMode, client, con
   var port = config?.port || 8079
   var serverId = config?.id || 'default'
   var { create } = useTerminal(client, directory, host, port)
-  var eventWsUrl = 'ws://' + host + ':' + port + '/event'
+  var eventWsUrl = 'ws://' + host + ':' + port + '/event?token=' + encodeURIComponent(config?.token || '')
 
   usePTYEvents(eventWsUrl, serverId, {
     onDeleted: function(id) {

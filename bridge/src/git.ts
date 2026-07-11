@@ -1,4 +1,4 @@
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
 
 export interface GitStatusItem {
   path: string
@@ -11,9 +11,11 @@ export interface GitStatus {
   notRepo?: boolean
 }
 
+// 统一用 execFileSync 传参数组，不经过 shell：既跨平台（Windows 无需担心 cmd.exe 转义），
+// 也杜绝文件名/提交信息里的特殊字符造成的命令注入。
 function execGit(directory: string, args: string[]): { stdout: string; stderr: string } {
   try {
-    const stdout = execSync('git ' + args.join(' '), {
+    const stdout = execFileSync('git', args, {
       cwd: directory,
       encoding: 'utf-8',
       timeout: 10000,
@@ -30,7 +32,7 @@ function execGit(directory: string, args: string[]): { stdout: string; stderr: s
 
 function checkGitExists(): boolean {
   try {
-    execSync('git --version', { encoding: 'utf-8', stdio: 'pipe' })
+    execFileSync('git', ['--version'], { encoding: 'utf-8', stdio: 'pipe' })
     return true
   } catch {
     return false
@@ -84,7 +86,7 @@ export function initRepo(directory: string): void {
   if (!checkGitExists()) {
     throw new Error('git not found')
   }
-  execSync('git init', { cwd: directory, encoding: 'utf-8', stdio: 'pipe', timeout: 10000 })
+  execGit(directory, ['init'])
 }
 
 export function getDiff(directory: string, file: string, cached?: boolean): string {
@@ -104,38 +106,26 @@ export function stageFile(directory: string, file?: string): void {
   if (!checkGitExists()) {
     throw new Error('git not found')
   }
-
-  const files = file || '.'
-  execSync(`git add ${files}`, { cwd: directory, encoding: 'utf-8', stdio: 'pipe', timeout: 10000 })
+  execGit(directory, ['add', '--', file || '.'])
 }
 
 export function unstageFile(directory: string, file?: string): void {
   if (!checkGitExists()) {
     throw new Error('git not found')
   }
-
-  const files = file || '.'
-  execSync(`git reset HEAD -- ${files}`, { cwd: directory, encoding: 'utf-8', stdio: 'pipe', timeout: 10000 })
+  execGit(directory, ['reset', 'HEAD', '--', file || '.'])
 }
 
 export function discardFile(directory: string, file?: string): void {
   if (!checkGitExists()) {
     throw new Error('git not found')
   }
-
-  const files = file || '.'
-  execSync(`git restore ${files}`, { cwd: directory, encoding: 'utf-8', stdio: 'pipe', timeout: 10000 })
+  execGit(directory, ['restore', '--', file || '.'])
 }
 
 export function commit(directory: string, message: string): void {
   if (!checkGitExists()) {
     throw new Error('git not found')
   }
-
-  execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, {
-    cwd: directory,
-    encoding: 'utf-8',
-    stdio: 'pipe',
-    timeout: 10000,
-  })
+  execGit(directory, ['commit', '-m', message])
 }

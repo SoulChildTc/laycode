@@ -25,6 +25,8 @@ const app = express()
 
 app.use(cors())
 app.use(express.json({ limit: '50mb' }))
+// 兜底捕获非 JSON 的请求体为 Buffer，供代理原样转发给 opencode（如未来的文件上传等）
+app.use(express.raw({ type: () => true, limit: '50mb' }))
 app.use(morgan('combined', { stream: morganStream }))
 app.use('/static', express.static(path.join(__dirname, '../public')))
 
@@ -270,6 +272,13 @@ server.on('upgrade', (req, socket, head) => {
 
   // 事件流 WS：/event（原先在 port+1，现统一到主端口）
   if (url.pathname === '/event') {
+    // 事件流由 bridge 自己终结（非透传给 opencode），所以认证责任在 bridge：
+    // 校验握手 URL 上的 token，不合法直接断开。
+    if (url.searchParams.get('token') !== config.token) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+      socket.destroy()
+      return
+    }
     handleEventUpgrade(req, socket, head)
     return
   }

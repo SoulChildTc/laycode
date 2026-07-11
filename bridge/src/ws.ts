@@ -29,13 +29,16 @@ export function startWebSocketServer(config: BridgeConfig) {
           if (done) break
 
           buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
+          // 按行切分，兼容 \r\n 与 \n；保留最后一段不完整的行留待下次拼接
+          const lines = buffer.split(/\r?\n/)
           buffer = lines.pop() || ''
 
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              if (ws.readyState === WebSocket.OPEN) {
-                ws.send(line.slice(6))
+            if (line.startsWith('data:')) {
+              // SSE 规范：data: 后可有一个可选空格
+              const data = line.slice(5).replace(/^ /, '')
+              if (data && ws.readyState === WebSocket.OPEN) {
+                ws.send(data)
               }
             }
           }

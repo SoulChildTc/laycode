@@ -37,6 +37,7 @@ LayCode 是 [opencode](https://github.com/anomalyco/opencode) 的移动端 compa
 - npm 或 yarn
 - [opencode](https://github.com/anomalyco/opencode) 已安装并可在命令行调用
 - 与手机在同一局域网内
+- 支持 macOS、Linux、Windows
 
 ### App 端（手机）
 - iOS 15+ 或 Android 8+

@@ -28,7 +28,7 @@ export default function TerminalListScreen({ navigation, route, themeMode, clien
   var filterDir: string | undefined = route.params?.directory
   var host = config?.host || 'localhost'
   var port = config?.port || 8079
-  var eventWsUrl = 'ws://' + host + ':' + port + '/event'
+  var eventWsUrl = 'ws://' + host + ':' + port + '/event?token=' + encodeURIComponent(config?.token || '')
   var serverId = config?.id || 'default'
   var [groups, setGroups] = useState<GroupedPTY[]>([])
   var [loading, setLoading] = useState(true)
