@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LayCode — 躺着码，一样 Vibe</title>
+  <meta name="description" content="LayCode 是 opencode 的移动端客户端。通过运行在电脑上的桥接服务，手机 App 可以安全连接本地 opencode 实例，随时随地继续对话、查看代码、管理任务。" />
+  <link rel="icon" href="assets/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-glow"></div>
+
+  <header class="nav">
+    <a class="nav-brand" href="#top">
+      <img src="assets/logo.png" alt="LayCode" class="nav-logo" />
+      <span>LayCode</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features">特性</a>
+      <a href="#screens">截图</a>
+      <a href="#start">快速开始</a>
+      <a href="https://github.com/SoulChildTc/laycode" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-badge">opencode 的移动端客户端</div>
+      <h1 class="hero-title">躺着码，<span class="grad">一样 Vibe</span></h1>
+      <p class="hero-sub">
+        在手机上继续你的 opencode 编码会话。通过运行在电脑上的桥接服务，
+        手机 App 安全连接本地 opencode，随时随地继续对话、查看代码、管理任务。
+      </p>
+
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="https://github.com/SoulChildTc/laycode/releases/latest" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 2h14v2H5v-2z"/></svg>
+          下载 Android App
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/SoulChildTc/laycode" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.09.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.55-1.14-4.55-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05a9.4 9.4 0 015 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.81 0 .27.18.59.69.49A10.02 10.02 0 0022 12.25C22 6.58 17.52 2 12 2z"/></svg>
+          在 GitHub 查看
+        </a>
+      </div>
+
+      <div class="hero-install">
+        <span class="install-label">电脑端一行命令启动桥接服务</span>
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          </div>
+          <div class="terminal-body">
+            <code><span class="prompt">$</span> <span class="cmd" id="cmd-main">npx laycode-cli</span></code>
+            <button class="copy-btn" data-copy="npx laycode-cli" aria-label="复制命令">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="section">
+      <h2 class="section-title">为移动端打造</h2>
+      <p class="section-sub">把桌面的编码能力，装进你的口袋。</p>
+      <div class="feature-grid">
+        <div class="card">
+          <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+          <h3>会话同步</h3>
+          <p>无缝接续你在电脑上的 opencode 对话，换个屏幕继续聊。</p>
+        </div>
+        <div class="card">
+          <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+          <h3>内置终端</h3>
+          <p>基于 xterm.js 的完整终端模拟器，在手机上直接跑命令。</p>
+        </div>
+        <div class="card">
+          <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><line x1="14" y1="14" x2="14" y2="14"/><line x1="21" y1="14" x2="21" y2="14"/><line x1="14" y1="21" x2="14" y2="21"/><line x1="17.5" y1="17.5" x2="17.5" y2="17.5"/><line x1="21" y1="21" x2="21" y2="21"/></svg></div>
+          <h3>扫码即连</h3>
+          <p>扫描桥接服务的二维码，几秒钟完成配对，无需手动输地址。</p>
+        </div>
+        <div class="card">
+          <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg></div>
+          <h3>自动发现</h3>
+          <p>mDNS 自动发现同一局域网内的桥接服务，连接省心。</p>
+        </div>
+        <div class="card">
+          <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+          <h3>任务管理</h3>
+          <p>查看和管理 opencode 生成的待办事项，进度一目了然。</p>
+        </div>
+        <div class="card">
+          <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+          <h3>安全连接</h3>
+          <p>Token 认证，所有请求经桥接服务代理，数据不出局域网。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Screenshots -->
+    <section id="screens" class="section">
+      <h2 class="section-title">界面一览</h2>
+      <p class="section-sub">深色、专注、为编码而生。</p>
+      <div class="screens">
+        <!-- 截图占位：替换 assets/screenshots/ 下对应文件即可 -->
+        <figure class="screen">
+          <img src="assets/screenshots/session.png" alt="会话页" onerror="this.parentNode.classList.add('placeholder')" />
+          <figcaption>会话</figcaption>
+        </figure>
+        <figure class="screen">
+          <img src="assets/screenshots/connect.png" alt="连接页" onerror="this.parentNode.classList.add('placeholder')" />
+          <figcaption>扫码连接</figcaption>
+        </figure>
+        <figure class="screen">
+          <img src="assets/screenshots/terminal.png" alt="终端页" onerror="this.parentNode.classList.add('placeholder')" />
+          <figcaption>内置终端</figcaption>
+        </figure>
+        <figure class="screen">
+          <img src="assets/screenshots/home.png" alt="首页" onerror="this.parentNode.classList.add('placeholder')" />
+          <figcaption>工作区</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Quick start -->
+    <section id="start" class="section">
+      <h2 class="section-title">快速开始</h2>
+      <p class="section-sub">两步，手机连上你的电脑。</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>电脑端启动桥接服务</h3>
+            <p>需要 Node.js ≥ 18。运行下面的命令，终端会显示配对二维码。</p>
+            <div class="terminal small">
+              <div class="terminal-body">
+                <code><span class="prompt">$</span> <span class="cmd">npx laycode-cli</span></code>
+                <button class="copy-btn" data-copy="npx laycode-cli" aria-label="复制命令">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>手机端扫码连接</h3>
+            <p>下载并打开 LayCode App，扫描二维码即可连接（确保手机和电脑在同一 Wi-Fi）。</p>
+            <a class="btn btn-primary btn-sm" href="https://github.com/SoulChildTc/laycode/releases/latest" target="_blank" rel="noopener">下载 App</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <img src="assets/logo.png" alt="LayCode" class="footer-logo" />
+        <span>LayCode</span>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/SoulChildTc/laycode" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/SoulChildTc/laycode/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="https://www.npmjs.com/package/laycode-cli" target="_blank" rel="noopener">npm</a>
+      </div>
+    </div>
+    <p class="footer-copy">MIT License © 2026 SoulChild · Built for <a href="https://github.com/sst/opencode" target="_blank" rel="noopener">opencode</a></p>
+  </footer>
+  <script>
+    // 命令一键复制
+    document.querySelectorAll('.copy-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(btn.dataset.copy);
+          btn.classList.add('copied');
+          setTimeout(() => btn.classList.remove('copied'), 1500);
+        } catch (e) {}
+      });
+    });
+  </script>
+</body>
+</html>
