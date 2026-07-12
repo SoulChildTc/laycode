@@ -162,6 +162,14 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const fabRotate = useRef(new Animated.Value(0)).current
   const fabPositionKey = storageKey(config.id, 'fab-position')
   const flatListRef = useRef<FlatList>(null)
+  // 用户是否贴在视觉底部（倒置列表）。同步 ref，供打字机自动滚判断是否跟随。
+  const isAtBottom = useRef(true)
+  // 是否正处于用户手动滚动中。用于区分「用户拖动」与「程序化 scrollToBottom」：
+  // 程序化滚动也会触发 onScroll，若不区分，自动滚会把 isAtBottom 重新置回底部 → 停不下来。
+  const userScrolling = useRef(false)
+  // 最近一次滚动事件的 offset。倒置列表里 offset≈0 表示贴底。onContentSizeChange 用它做最终裁决，
+  // 不依赖拖动事件时序（Android 上 onScrollBeginDrag/onMomentumScrollEnd 时序不可靠）。
+  const lastOffset = useRef(0)
   const xhrRef = useRef<XMLHttpRequest | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const retryCountRef = useRef(0)
@@ -878,7 +886,11 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
   const handleScroll = useCallback((e: any) => {
     const offset = e.nativeEvent.contentOffset.y
+    lastOffset.current = offset
     const isNearBottom = offset < 80
+    if (userScrolling.current) {
+      isAtBottom.current = isNearBottom
+    }
     if (isNearBottom !== !showScrollButton) {
       setShowScrollButton(!isNearBottom)
       Animated.spring(scrollButtonOpacity, {
@@ -952,6 +964,10 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     if (!canSendMessage(input, attachments) || sending || !sessionId) return
     setSending(true)
     setError(null)
+    // 发送新消息是明确的「看最新」意图：恢复贴底跟随。
+    isAtBottom.current = true
+    userScrolling.current = false
+    lastOffset.current = 0
     const text = input.trim()
     const currentAttachments = attachments
     setInput('')
@@ -1051,8 +1067,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const handleRemoveAttachment = (id: string) => {
     setAttachments(prev => prev.filter(a => a.id !== id))
   }
-
-  const isAtBottom = useRef(true)
 
   const currentModelName = getModelDisplayName(currentModel)
   const headerModelCwd = currentModelName ? `${currentModelName} · ${cwd || '对话'}` : (cwd || '对话')
@@ -1202,15 +1216,25 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
               contentContainerStyle={styles.listContent}
               onEndReached={handleLoadMore}
               onEndReachedThreshold={0.3}
+              maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
               ListFooterComponent={loadingMore ? <View style={styles.loadingMore}><ActivityIndicator size="small" color={theme.accent} /></View> : null}
               onScroll={handleScroll}
               scrollEventThrottle={16}
               onContentSizeChange={() => {
-                if (sending && !showScrollButton) scrollToBottom(true)
+                // 贴底时才跟随打字机增长；上滑查看历史时不打扰。
+                // 配合 maintainVisibleContentPosition：离底时内容增长不会顶动用户视图。
+                if (sending && lastOffset.current < 80) scrollToBottom(true)
               }}
-              onScrollBeginDrag={() => { isAtBottom.current = false }}
+              onScrollBeginDrag={() => {
+                userScrolling.current = true
+                isAtBottom.current = false
+              }}
+              onScrollEndDrag={(e) => {
+                isAtBottom.current = e.nativeEvent.contentOffset.y < 80
+              }}
               onMomentumScrollEnd={(e) => {
-                isAtBottom.current = e.nativeEvent.contentOffset.y < 40
+                isAtBottom.current = e.nativeEvent.contentOffset.y < 80
+                userScrolling.current = false
               }}
               keyboardShouldPersistTaps="handled"
             />
@@ -1270,7 +1294,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
       {showScrollButton && messages.length > 0 && (
           <Animated.View style={[styles.scrollButton, { opacity: scrollButtonOpacity, backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <TouchableOpacity onPress={() => scrollToBottom()} style={styles.scrollButtonTouch} activeOpacity={0.7}>
+            <TouchableOpacity onPress={() => { isAtBottom.current = true; userScrolling.current = false; lastOffset.current = 0; scrollToBottom() }} style={styles.scrollButtonTouch} activeOpacity={0.7}>
               <Feather name="chevron-down" size={20} color={theme.textSecondary} />
             </TouchableOpacity>
           </Animated.View>
