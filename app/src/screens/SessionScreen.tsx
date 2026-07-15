@@ -29,6 +29,7 @@ import { initialV2State } from '../chat/v2Types'
 import { adaptMessages } from '../chat/adaptMessages'
 import * as ImagePicker from 'expo-image-picker'
 import * as DocumentPicker from 'expo-document-picker'
+import * as Network from 'expo-network'
 import { File } from 'expo-file-system'
 
 function formatSessionError(error: any): string {
@@ -70,8 +71,9 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [cwd, setCwd] = useState('')
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<FileAttachment[]>([])
-  // 乐观回显：发送后到真实 user 消息事件到达前，先显示这条。纯视图层叠加，不进 v2Reducer。
-  const [pendingSend, setPendingSend] = useState<UserMsg | null>(null)
+  // 乐观回显：发送后先显示这条用户消息（纯视图层，不进 v2Reducer）。
+  // status：sending（发送中，等提交确认）/ failed（提交失败，可点击重发）。真实消息到达即清除。
+  const [pendingSend, setPendingSend] = useState<{ msg: UserMsg; text: string; attachments: FileAttachment[]; status: 'sending' | 'failed' } | null>(null)
   const setError = useCallback((msg: string | null) => {
     dispatch({ type: 'banner/set', banner: msg ? { text: msg } : null })
   }, [])
@@ -111,6 +113,8 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   // 不依赖拖动事件时序（Android 上 onScrollBeginDrag/onMomentumScrollEnd 时序不可靠）。
   const lastOffset = useRef(0)
   const xhrRef = useRef<XMLHttpRequest | null>(null)
+  // 供发送/重发主动触发 SSE 重连（重连逻辑在 SSE useEffect 内，通过 ref 暴露）。
+  const forceReconnectRef = useRef<(() => void) | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const retryCountRef = useRef(0)
   const appStateRef = useRef(AppState.currentState)
@@ -401,16 +405,19 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       }
     }
     const list = adapted.reverse()
-    return pendingSend ? [pendingSend, ...list] : list
+    return pendingSend ? [pendingSend.msg, ...list] : list
   }, [v2State, revertMessageId, revertDiff, pendingSend])
 
-  // 真实 user 消息到达后清除乐观回显：v2State 里出现与 pendingSend 文本相同的 user 消息即视为已落地。
+  // 清除乐观回显：当 v2State 里出现一条「文本与本次发送相同、且已含 text 内容」的真实 user 消息。
+  // 用「内容匹配」判断，对「断网重连后 reloadSession 已把真实消息拉入」的场景鲁棒
+  // （那种情况真实消息不是『新』的，用 id 差集会永远匹配不到、导致一直卡发送中）。
+  // 代价：极少数「连发两条相同文本」会让乐观气泡稍早让位给已有消息，属可接受的轻微闪动。
   useEffect(() => {
-    if (!pendingSend) return
+    if (!pendingSend || pendingSend.status === 'failed') return
     const arrived = v2State.messages.some((m) => {
       if ((m as any).role !== 'user') return false
       const textPart = (v2State.parts[m.id] || []).find((p) => p.type === 'text') as any
-      return (textPart?.text || '') === pendingSend.text
+      return typeof textPart?.text === 'string' && textPart.text.length > 0 && textPart.text === pendingSend.text
     })
     if (arrived) setPendingSend(null)
   }, [v2State, pendingSend])
@@ -680,28 +687,46 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
     connect()
 
+    // 主动重连：切后台回前台、网络恢复、或发送/重发时，不等退避倒计时，立即重连 + 刷新。
+    const forceReconnect = (showBanner = true) => {
+      if (aborted) return
+      retryCountRef.current = 0
+      if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null }
+      if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+      if (xhrRef.current) { xhrRef.current.abort(); xhrRef.current = null }
+      if (showBanner) {
+        setError('已重连')
+        setTimeout(() => setError(null), 1500)
+      }
+      reloadSession()
+      connect()
+    }
+    forceReconnectRef.current = () => forceReconnect(false)
+
     const onAppState = (next: AppStateStatus) => {
       if (aborted) return
       if (next === 'active') {
         const wasBackground = appStateRef.current.match(/inactive|background/)
-        if (wasBackground) {
-          retryCountRef.current = 0
-          if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null }
-          if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
-          if (xhrRef.current) { xhrRef.current.abort(); xhrRef.current = null }
-          setError('已重连')
-          setTimeout(() => setError(null), 1500)
-          reloadSession()
-          connect()
-        }
+        if (wasBackground) forceReconnect()
       }
       appStateRef.current = next
     }
     const sub = AppState.addEventListener('change', onAppState)
 
+    // 网络从断到通时主动重连（否则要干等指数退避，最长 30s）。
+    let wasConnected = true
+    const netSub = Network.addNetworkStateListener(({ isConnected }) => {
+      if (aborted) return
+      const nowConnected = isConnected !== false
+      if (nowConnected && !wasConnected) forceReconnect()
+      wasConnected = nowConnected
+    })
+
     return () => {
       aborted = true
+      forceReconnectRef.current = null
       sub.remove()
+      netSub.remove()
       if (xhrRef.current) { xhrRef.current.abort(); xhrRef.current = null }
       if (retryRef.current) clearTimeout(retryRef.current)
       if (countdownRef.current) clearInterval(countdownRef.current)
@@ -794,29 +819,25 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     }
   }, [client, sessionId, currentModel, toast])
 
-  const handleSend = useCallback(async () => {
-    if (!canSendMessage(input, attachments) || sending || !sessionId) return
+  // 实际发送。text+attachments 已确定；乐观回显 + 失败标记均在此处理。
+  const doSend = useCallback(async (text: string, sendAttachments: FileAttachment[]) => {
     dispatch({ type: 'session/sending', sending: true })
     setError(null)
-    // 发送新消息是明确的「看最新」意图：恢复贴底跟随。
     isAtBottom.current = true
     userScrolling.current = false
     lastOffset.current = 0
-    const text = input.trim()
-    const currentAttachments = attachments
-    setInput('')
-    setAttachments([])
-    // 乐观回显：立即显示这条用户消息，真实事件到达后由 useEffect 清除。
-    setPendingSend({
+
+    const msg: UserMsg = {
       id: `pending-${Date.now()}`,
       role: 'user',
       text,
-      files: currentAttachments.map((a) => ({ url: `data:${a.mime};base64,${a.base64}`, mime: a.mime, filename: a.filename })),
-    })
+      files: sendAttachments.map((a) => ({ url: `data:${a.mime};base64,${a.base64}`, mime: a.mime, filename: a.filename })),
+    }
+    setPendingSend({ msg, text, attachments: sendAttachments, status: 'sending' })
 
     try {
       const parts: any[] = [{ type: 'text' as any, text }]
-      for (const a of currentAttachments) {
+      for (const a of sendAttachments) {
         parts.push({ type: 'file' as any, mime: a.mime, filename: a.filename, url: `data:${a.mime};base64,${a.base64}` })
       }
       await client.promptMessage(
@@ -828,9 +849,28 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     } catch (e: any) {
       dispatch({ type: 'session/sending', sending: false })
       setError(`发送失败: ${e.message}`)
-      setPendingSend(null)
+      // 保留失败消息（不删），标记 failed 供点击重发。
+      setPendingSend((prev) => (prev ? { ...prev, status: 'failed' } : prev))
     }
-  }, [input, sending, sessionId, client, currentModel, currentAgent, attachments])
+  }, [sessionId, client, currentModel, currentAgent])
+
+  const handleSend = useCallback(() => {
+    if (!canSendMessage(input, attachments) || sending || !sessionId) return
+    const text = input.trim()
+    const currentAttachments = attachments
+    setInput('')
+    setAttachments([])
+    doSend(text, currentAttachments)
+  }, [input, sending, sessionId, attachments, doSend])
+
+  // 点击失败消息重发：用保存的原始 text+附件重新发送。
+  // 重发前主动重连 SSE——失败通常源于断网，此时事件流多半仍是断开的，
+  // 不重连的话即使消息发出去，AI 回复的实时事件也收不到（表现为一直「发送中」）。
+  const handleResend = useCallback(() => {
+    if (pendingSend?.status !== 'failed') return
+    forceReconnectRef.current?.()
+    doSend(pendingSend.text, pendingSend.attachments)
+  }, [pendingSend, doSend])
 
   const addAttachment = async (uri: string, mime: string, filename: string) => {
     try {
@@ -1038,7 +1078,9 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                     </View>
                   )
                 }
-                return <MessageBubble message={item} theme={theme} onToolPress={handleToolPress} onRevert={item.role === 'user' ? () => handleRevert(item.id) : undefined} workspaceDir={cwd} />
+                const isPending = pendingSend?.msg.id === item.id
+                const sendStatus = isPending ? pendingSend!.status : undefined
+                return <MessageBubble message={item} theme={theme} onToolPress={handleToolPress} onRevert={item.role === 'user' ? () => handleRevert(item.id) : undefined} workspaceDir={cwd} sendStatus={sendStatus} onResend={sendStatus === 'failed' ? handleResend : undefined} />
               }}
               style={styles.list}
               contentContainerStyle={styles.listContent}

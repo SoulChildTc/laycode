@@ -51,9 +51,11 @@ interface Props {
   onToolPress?: (toolCall: any) => void
   onRevert?: () => void
   workspaceDir?: string
+  sendStatus?: 'sending' | 'failed'
+  onResend?: () => void
 }
 
-export default function MessageBubble({ message, theme, onToolPress, onRevert, workspaceDir }: Props) {
+export default function MessageBubble({ message, theme, onToolPress, onRevert, workspaceDir, sendStatus, onResend }: Props) {
   const [copied, setCopied] = useState(false)
   const [menuVisible, setMenuVisible] = useState(false)
 
@@ -110,7 +112,16 @@ export default function MessageBubble({ message, theme, onToolPress, onRevert, w
             {!!message.text && <Text selectable style={[styles.userText, { color: theme.userBubbleText }]}>{message.text}</Text>}
           </View>
         </TouchableOpacity>
-        {renderFooter({ justifyContent: 'flex-end' })}
+        {sendStatus === 'failed' ? (
+          <TouchableOpacity onPress={onResend} hitSlop={6} style={styles.failedRow}>
+            <Feather name="alert-circle" size={12} color={theme.error} style={{ marginRight: 4 }} />
+            <Text style={[styles.failedHint, { color: theme.error }]}>发送失败，点击重发</Text>
+          </TouchableOpacity>
+        ) : sendStatus === 'sending' ? (
+          <View style={styles.failedRow}>
+            <Text style={[styles.failedHint, { color: theme.textTertiary }]}>发送中…</Text>
+          </View>
+        ) : renderFooter({ justifyContent: 'flex-end' })}
         {renderMenu()}
       </View>
     )
@@ -164,6 +175,8 @@ export default function MessageBubble({ message, theme, onToolPress, onRevert, w
 
 const styles = StyleSheet.create({
   columnContainer: { marginVertical: 6 },
+  failedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, marginRight: 4 },
+  failedHint: { fontSize: 11 },
   userContainer: { flexDirection: 'row', justifyContent: 'flex-end' },
   userBubble: { maxWidth: '80%', borderRadius: 20, borderBottomRightRadius: 6, paddingHorizontal: 16, paddingVertical: 10 },
   userFiles: { marginBottom: 4 },
