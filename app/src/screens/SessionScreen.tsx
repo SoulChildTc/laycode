@@ -126,13 +126,14 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const theme = getTheme(themeMode)
   const toast = useToast()
   const [messages, setMessages] = useState<ListItem[]>([])
+  const [chatState, dispatch] = useReducer(chatReducer, initialChatState)
+  const { pendingPermissions, pendingQuestions, sending, banner: sessionBanner } = chatState
   const [sessionTitle, setSessionTitle] = useState(routeTitle || sessionId?.slice(0, 8) || '')
   const [cwd, setCwd] = useState('')
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<FileAttachment[]>([])
-  const [sessionBanner, setSessionBanner] = useState<{ text: string; bg?: string } | null>(null)
   const setError = useCallback((msg: string | null) => {
-    setSessionBanner(msg ? { text: msg } : null)
+    dispatch({ type: 'banner/set', banner: msg ? { text: msg } : null })
   }, [])
   const [retryCountdown, setRetryCountdown] = useState(0)
   const [showScrollButton, setShowScrollButton] = useState(false)
@@ -142,8 +143,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [showRenameModal, setShowRenameModal] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [agentSelectorVisible, setAgentSelectorVisible] = useState(false)
-  const [chatState, dispatch] = useReducer(chatReducer, initialChatState)
-  const { pendingPermissions, pendingQuestions, sending } = chatState
   const [defaultModel, setDefaultModel] = useState<ModelKey | null>(null)
   const [revertMessageId, setRevertMessageId] = useState<string | null>(null)
   const [revertDiff, setRevertDiff] = useState<string | null>(null)
@@ -788,43 +787,51 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
       let retryScheduled = false
 
-      const startCountdown = (secs: number) => {
+      // 安排一次重连：倒计时与真正的重连动作同源，严格对齐。
+      // onerror/onloadend 可能就同一次断连都触发，retryScheduled 守卫确保每个连接周期只调度一次。
+      const scheduleReconnect = () => {
+        if (aborted || retryScheduled) return
+        retryScheduled = true
+
+        // 清掉可能残留的旧计时器，避免多个倒计时/重连叠加导致秒数跳变。
+        if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null }
+        if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+
+        const count = retryCountRef.current++
+        const delay = Math.min(1000 * Math.pow(2, count), 30000)
+        let secs = Math.ceil(delay / 1000)
+
+        const doReconnect = () => {
+          if (aborted) return
+          if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+          setRetryCountdown(0)
+          setError('正在重连…')
+          retryScheduled = false
+          connect()
+        }
+
+        // 第一次断连不显示倒计时（沿用原行为：count>=1 才显示）。
+        if (count < 1) {
+          retryRef.current = setTimeout(doReconnect, delay)
+          return
+        }
+
+        // 显示倒计时；秒数走到 0 的那一刻正好触发重连，二者对齐。
         setRetryCountdown(secs)
         setError(`连接断开，${secs}s 后重试…`)
-        if (countdownRef.current) clearInterval(countdownRef.current)
         countdownRef.current = setInterval(() => {
-          setRetryCountdown((prev) => {
-            const next = prev - 1
-            if (next <= 0) {
-              if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
-              setError('正在重连…')
-              return 0
-            }
-            setError(`连接断开，${next}s 后重试…`)
-            return next
-          })
+          secs -= 1
+          if (secs <= 0) {
+            doReconnect()
+            return
+          }
+          setRetryCountdown(secs)
+          setError(`连接断开，${secs}s 后重试…`)
         }, 1000)
       }
 
-      xhr.onerror = () => {
-        if (aborted || retryScheduled) return
-        retryScheduled = true
-        const count = retryCountRef.current++
-        const delay = Math.min(1000 * Math.pow(2, count), 30000)
-        const secs = Math.ceil(delay / 1000)
-        if (count >= 1) startCountdown(secs)
-        retryRef.current = setTimeout(() => { retryScheduled = false; connect() }, delay)
-      }
-
-      xhr.onloadend = () => {
-        if (aborted || retryScheduled) return
-        retryScheduled = true
-        const count = retryCountRef.current++
-        const delay = Math.min(1000 * Math.pow(2, count), 30000)
-        const secs = Math.ceil(delay / 1000)
-        if (count >= 1) startCountdown(secs)
-        retryRef.current = setTimeout(() => { retryScheduled = false; connect() }, delay)
-      }
+      xhr.onerror = scheduleReconnect
+      xhr.onloadend = scheduleReconnect
 
       xhr.send()
     }
@@ -977,17 +984,12 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       for (const a of currentAttachments) {
         parts.push({ type: 'file' as any, mime: a.mime, filename: a.filename, url: `data:${a.mime};base64,${a.base64}` })
       }
-      const body: any = { parts }
-      if (currentModel) {
-        body.model = { providerID: currentModel.providerID, modelID: currentModel.modelID }
-      }
-      if (currentAgent) {
-        body.agent = currentAgent.name
-      }
-      await client.client.session.promptAsync({
-        path: { id: sessionId },
-        body,
-      })
+      await client.promptMessage(
+        sessionId,
+        parts,
+        currentModel ? { providerID: currentModel.providerID, modelID: currentModel.modelID } : undefined,
+        currentAgent ? currentAgent.name : undefined,
+      )
     } catch (e: any) {
       dispatch({ type: 'session/sending', sending: false })
       setError(`发送失败: ${e.message}`)
@@ -1122,7 +1124,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             <View style={[styles.errorBar, { backgroundColor: bg }]}>
               <Feather name={icon} size={14} color="rgba(255,255,255,0.8)" style={{ marginRight: 6 }} />
               <Text style={styles.errorText}>{sessionBanner.text}</Text>
-              <TouchableOpacity onPress={() => setSessionBanner(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity onPress={() => dispatch({ type: 'banner/set', banner: null })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Feather name="x" size={16} color="rgba(255,255,255,0.8)" />
               </TouchableOpacity>
             </View>

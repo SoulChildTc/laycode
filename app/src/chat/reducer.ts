@@ -34,6 +34,15 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, sending: action.sending }
     }
 
+    case 'banner/set': {
+      const cur = state.banner
+      const next = action.banner
+      // 内容相同则返回原引用（null↔null、或 text+bg 均相同）。
+      if (cur === next) return state
+      if (cur && next && cur.text === next.text && cur.bg === next.bg) return state
+      return { ...state, banner: next }
+    }
+
     default:
       return state
   }

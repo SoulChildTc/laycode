@@ -35,3 +35,4 @@ export type ChatAction =
   | { type: 'question/removed'; id: string }
   // ---- 会话状态（步骤 2）----
   | { type: 'session/sending'; sending: boolean }
+  | { type: 'banner/set'; banner: Banner | null }

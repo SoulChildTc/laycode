@@ -74,6 +74,25 @@ assertEqual(send3.sending, false)
 // 不影响权限/提问
 assertEqual(send1.pendingPermissions.length, 0)
 
+// ---- banner/set：设置文字横幅 ----
+const b1 = chatReducer(initialChatState, { type: 'banner/set', banner: { text: '加载失败' } })
+assertEqual(b1.banner?.text, '加载失败')
+// 同内容返回原引用
+const b2 = chatReducer(b1, { type: 'banner/set', banner: { text: '加载失败' } })
+assertEqual(b2, b1)
+// 不同内容更新
+const b3 = chatReducer(b1, { type: 'banner/set', banner: { text: '已重连' } })
+assertEqual(b3.banner?.text, '已重连')
+// 清空
+const b4 = chatReducer(b3, { type: 'banner/set', banner: null })
+assertEqual(b4.banner, null)
+// null → null 返回原引用
+const b5 = chatReducer(b4, { type: 'banner/set', banner: null })
+assertEqual(b5, b4)
+// 带 bg 字段
+const b6 = chatReducer(initialChatState, { type: 'banner/set', banner: { text: 'x', bg: '#0f0' } })
+assertEqual(b6.banner?.bg, '#0f0')
+
 // ---- 原 state 不被修改（纯函数）----
 assertEqual(initialChatState.pendingPermissions.length, 0)
 

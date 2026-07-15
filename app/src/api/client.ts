@@ -331,6 +331,29 @@ export class LayCodeClient {
     return (data as any) || {}
   }
 
+  // 发送消息（支持 model + agent + 附件）。走统一 request()：断网抛 NetworkError、非 2xx 归一化。
+  // 取代 SessionScreen 里绕过错误处理的裸 SDK 调用，避免断网时请求无限挂起、UI 永久卡「思考中」。
+  // 超时收紧到 10s：prompt_async 只是提交（不等 AI 回复），正常应秒回，断网时不必干等默认 30s。
+  async promptMessage(
+    sessionId: string,
+    parts: any[],
+    model?: { providerID: string; modelID: string },
+    agent?: string,
+  ): Promise<void> {
+    const body: any = { parts }
+    if (model) body.model = model
+    if (agent) body.agent = agent
+    await this.request(
+      `/opencode-api/session/${encodeURIComponent(sessionId)}/prompt_async`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      10000,
+    )
+  }
+
   async sendMessage(sessionId: string, text: string) {
     const data = await this.unwrap(this.client.session.prompt({
       path: { id: sessionId },
