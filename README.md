@@ -42,6 +42,18 @@ LayCode 是 [opencode](https://github.com/sst/opencode) 的移动端 companion a
 - iOS 15+ 或 Android 8+
 - Expo Go（开发模式）或通过 EAS Build 打包的独立 App
 
+## 🔗 版本兼容性
+
+App 与 `laycode-cli` 各自发版。每个 App 版本对应一个建议的 `laycode-cli` 版本，升级 App 前确认 CLI 不低于对应版本即可：
+
+| App 版本 | 建议 laycode-cli |
+|---|---|
+| 1.1.0 | 0.1.3 |
+| 1.0.0 | 0.1.2 |
+
+> - App 版本：设置 → 关于。CLI 版本：`npx laycode-cli --version` 或看启动日志。
+> - 升级 App 后若异常，多半是 CLI 过旧，运行 `npx laycode-cli@latest` 更新即可。
+
 ## 🚀 Quick Start
 
 ### 安装
