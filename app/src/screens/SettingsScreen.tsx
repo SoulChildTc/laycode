@@ -5,6 +5,9 @@ import { Feather } from '@expo/vector-icons'
 import { getTheme, ThemeMode } from '../theme'
 import { LayCodeClient } from '../api/client'
 import { ServerEntry } from '../types'
+import appJson from '../../app.json'
+
+const APP_VERSION = appJson.expo.version
 
 interface Props {
   navigation: any
@@ -103,6 +106,18 @@ export default function SettingsScreen({ navigation, themeMode, onThemeToggle, c
             </View>
             <Text style={[styles.rowActionText, { color: theme.text, flex: 1 }]}>深色模式</Text>
             <Switch value={isDark} onValueChange={onThemeToggle} trackColor={{ true: theme.accent }} />
+          </View>
+        </View>
+
+        {/* 关于 */}
+        <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>关于</Text>
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View style={styles.row}>
+            <View style={[styles.rowIcon, { backgroundColor: theme.accent + '22' }]}>
+              <Feather name="info" size={16} color={theme.accent} />
+            </View>
+            <Text style={[styles.rowActionText, { color: theme.text, flex: 1 }]}>版本</Text>
+            <Text style={[styles.rowSub, { color: theme.textTertiary, marginTop: 0 }]}>v{APP_VERSION}</Text>
           </View>
         </View>
       </ScrollView>
