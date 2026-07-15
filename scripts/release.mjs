@@ -121,8 +121,12 @@ try {
 
 // 4. 发布成功后再提交版本号并打 tag（成功才落历史，push 由你手动执行）。
 run('git', ['-C', repoRoot, 'add', 'bridge/package.json'])
-run('git', ['-C', repoRoot, 'commit', '-m', `release: v${newVer}`])
+run('git', ['-C', repoRoot, 'commit', '-m', `chore(bridge): bump version to v${newVer}`])
 run('git', ['-C', repoRoot, 'tag', `v${newVer}`])
 
-console.log(`\n✅ 发布完成（${bump} → v${newVer}）`)
-console.log(`   已提交并打 tag v${newVer}。推送：git push && git push --tags`)
+console.log(`\n✅ 发布完成（${bump} → v${newVer}）：已发布到 npm、已提交并打 tag v${newVer}。`)
+console.log('\n╭──────────────── 接下来手动执行 ────────────────╮')
+console.log('│                                                │')
+console.log('│   git push && git push --tags                  │')
+console.log('│                                                │')
+console.log('╰────────────────────────────────────────────────╯\n')
