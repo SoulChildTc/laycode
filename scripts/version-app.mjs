@@ -7,6 +7,7 @@ import { execFileSync } from 'child_process'
 import { readFileSync, writeFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
+import readline from 'readline'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.join(__dirname, '..')
@@ -23,6 +24,16 @@ if (!['patch', 'minor', 'major'].includes(bump)) {
 
 function git(args) {
   return execFileSync('git', args, { cwd: repoRoot, encoding: 'utf-8' }).trim()
+}
+
+function confirm(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close()
+      resolve(/^y(es)?$/i.test(answer.trim()))
+    })
+  })
 }
 
 function nextVersion(current, kind) {
@@ -62,6 +73,12 @@ console.log(`  当前版本：${pkgVer}`)
 console.log(`  升级类型：${bump}`)
 console.log(`  目标版本：${newVer}`)
 console.log('──────────────────────────────────')
+
+const ok = await confirm(`\n确认升级到 ${newVer}（会改版本号并提交、打 tag）？(y/N) `)
+if (!ok) {
+  console.error('已取消，未做任何修改。')
+  process.exit(0)
+}
 
 // 同步写两处版本号，保留原缩进（2 空格）。
 pkg.version = newVer
