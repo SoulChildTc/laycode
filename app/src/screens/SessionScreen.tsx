@@ -17,14 +17,16 @@ import RevertBanner from '../components/RevertBanner'
 import FabMenu from '../components/FabMenu'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import { useAgents } from '../hooks/useAgents'
-import type { Message, AssistantMsg, ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, QuestionRequest, ServerEntry, ListItem, RevertBannerMsg, CompactionMsg, FileAttachment } from '../types'
-import { mapToolStatus, isAssistant, isRevertBanner, isCompaction } from '../types'
-import { stripThinking } from '../utils/segmentParts'
+import type { ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, QuestionRequest, ServerEntry, ListItem, RevertBannerMsg, FileAttachment } from '../types'
+import { isRevertBanner, isCompaction } from '../types'
 import { storageKey } from '../utils/storage'
 import { parseRevertDiff } from '../utils/revertDiff'
-import { canSendMessage, mergeAssistantText, mergeMessageFile, mergeMessageText } from '../utils/messageParts'
+import { canSendMessage } from '../utils/messageParts'
 import { chatReducer } from '../chat/reducer'
 import { initialChatState } from '../chat/types'
+import { v2Reducer } from '../chat/v2Reducer'
+import { initialV2State } from '../chat/v2Types'
+import { adaptMessages } from '../chat/adaptMessages'
 import * as ImagePicker from 'expo-image-picker'
 import * as DocumentPicker from 'expo-document-picker'
 import { File } from 'expo-file-system'
@@ -36,71 +38,6 @@ function formatSessionError(error: any): string {
   const parts = [name, message].filter(Boolean)
   if (statusCode) parts.splice(1, 0, String(statusCode))
   return parts.join(' ') || 'Unknown error'
-}
-
-function buildRevertedList(messages: Message[], revertedCount: number, diffFiles: { filename: string; additions: number; deletions: number }[]): ListItem[] {
-  const banner: RevertBannerMsg = {
-    id: `revert-banner`,
-    role: 'revert-banner',
-    revertedCount,
-    diffFiles,
-  }
-  const list: ListItem[] = [banner, ...messages.reverse()]
-  return list
-}
-
-function countRevertedMessages(messages: Message[], revertIdx: number): number {
-  let count = 0
-  for (let i = revertIdx; i < messages.length; i++) {
-    if (messages[i].role === 'user') count++
-  }
-  return count
-}
-
-function findRevertedMessageText(messages: Message[], revertIdx: number): string {
-  const msg = messages[revertIdx]
-  if (msg.role === 'user') return msg.text || ''
-  return ''
-}
-
-function parseMessages(raw: any[]): Message[] {
-  return (raw || []).map((item: any): Message => {
-    const role = item.info?.role || 'assistant'
-    const id = item.info?.id || item.id
-    if (role === 'user') {
-      const textPart = (item.parts || []).find((p: any) => p.type === 'text')
-      const fileParts = (item.parts || []).filter((p: any) => p.type === 'file')
-      return {
-        id, role: 'user', text: textPart?.text || '',
-        files: fileParts.map((p: any) => ({ url: p.url, mime: p.mime, filename: p.filename })),
-        time: item.info?.time,
-      }
-    }
-    const reasoningPart = (item.parts || []).find((p: any) => p.type === 'reasoning')
-    const textParts = (item.parts || []).filter((p: any) => p.type === 'text')
-    const toolParts = (item.parts || []).filter((p: any) => p.type === 'tool')
-    const fileParts = (item.parts || []).filter((p: any) => p.type === 'file')
-    const errorInfo = item.info?.error
-    const errorContent = errorInfo
-      ? `⚠️ ${formatSessionError(errorInfo)}`
-      : ''
-    return {
-      id,
-      role: 'assistant',
-      reasoning: { text: reasoningPart?.text || '', isActive: false },
-      content: errorContent || textParts.map((p: any) => stripThinking(p.text || '')).join(''),
-      toolCalls: toolParts.map((p: any): ToolCall => ({
-        id: p.id,
-        name: p.tool || p.name || '',
-        status: mapToolStatus(p.state?.status || 'completed'),
-        input: p.state?.input,
-        output: p.state?.output,
-        metadata: { ...(p.state?.metadata || {}), ...(p.metadata || {}) },
-      })),
-      files: fileParts.map((p: any) => ({ url: p.url, mime: p.mime, filename: p.filename })),
-      time: item.info?.time,
-    }
-  })
 }
 
 function tokenSum(t: any): number {
@@ -125,9 +62,10 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const fallbackAgentsLoadedRef = useRef(false)
   const theme = getTheme(themeMode)
   const toast = useToast()
-  const [messages, setMessages] = useState<ListItem[]>([])
   const [chatState, dispatch] = useReducer(chatReducer, initialChatState)
   const { pendingPermissions, pendingQuestions, sending, banner: sessionBanner } = chatState
+  // V2 消息状态：消费 message/part 事件，是消息流的唯一真相源（渲染经 adaptMessages 派生）。
+  const [v2State, v2Dispatch] = useReducer(v2Reducer, initialV2State)
   const [sessionTitle, setSessionTitle] = useState(routeTitle || sessionId?.slice(0, 8) || '')
   const [cwd, setCwd] = useState('')
   const [input, setInput] = useState('')
@@ -256,14 +194,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     const req = pendingPermissions[0]
     if (!req) return
 
-    if (reply === 'reject' && message) {
-      const loadingId = `loading-${Date.now()}`
-      setMessages((prev) => [
-        { id: loadingId, role: 'assistant', reasoning: { text: '', isActive: false }, content: '', toolCalls: [] },
-        ...prev,
-      ])
-    }
-
     dispatch({ type: 'permission/removed', id: req.id })
 
     try {
@@ -312,6 +242,20 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       const raw = pageResult.messages
       cursorRef.current = pageResult.nextCursor
 
+      // [3b-3 影子模式] 把 HTTP 拉取的历史消息灌进 v2Reducer（hydrate）。
+      // raw 每项为 { info: Message, parts: Part[] }，正是 V2 所需结构。
+      {
+        const v2Messages = (raw as any[])
+          .map((item) => item.info)
+          .filter(Boolean)
+          .sort((a: any, b: any) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        const v2Parts: Record<string, any[]> = {}
+        for (const item of raw as any[]) {
+          if (item.info?.id) v2Parts[item.info.id] = item.parts || []
+        }
+        v2Dispatch({ type: 'hydrate', messages: v2Messages, parts: v2Parts })
+      }
+
       // Session metadata
       if (sessionData?.info?.title) setSessionTitle(sessionData.info.title)
       if (sessionData?.info?.parentID) setParentID(sessionData.info.parentID)
@@ -322,21 +266,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
       // Messages
       if (raw.length > 0) {
-        const m = parseMessages(raw)
-        const revertMsgId = sessionData?.revert?.messageID
-        if (revertMsgId) {
-          const revertIdx = m.findIndex((msg) => msg.id === revertMsgId)
-          if (revertIdx >= 0) {
-            const before = m.slice(0, revertIdx)
-            const diffFiles = parseRevertDiff(sessionData?.revert?.diff || '')
-            setMessages(buildRevertedList(before, countRevertedMessages(m, revertIdx), diffFiles))
-          } else {
-            setMessages(m.reverse())
-          }
-        } else {
-          setMessages(m.reverse())
-        }
-
         const lastAssistant = (raw as any[]).findLast((item: any) => item.info?.role === 'assistant')
         if (lastAssistant?.info?.providerID && lastAssistant?.info?.modelID) {
           setCurrentModel({
@@ -427,12 +356,15 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       if (gen !== loadGenRef.current) return
       cursorRef.current = nextCursor
       if (raw.length > 0) {
-        const older = parseMessages(raw).reverse()
-        setMessages((prev) => {
-          const existing = new Set(prev.map((m) => m.id))
-          const fresh = older.filter((m) => !existing.has(m.id))
-          return [...prev, ...fresh]
-        })
+        // V2：把更早的消息与其 part upsert 进 v2Reducer（有序插入 + 按 id 去重，
+        // 自动并入现有列表，无需手动对账）。
+        for (const item of raw as any[]) {
+          if (!item.info?.id) continue
+          v2Dispatch({ type: 'message.upsert', message: item.info })
+          for (const part of (item.parts || [])) {
+            v2Dispatch({ type: 'part.upsert', part })
+          }
+        }
       }
     } catch {
     } finally {
@@ -446,6 +378,26 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   useEffect(() => {
     if (sessionId) reloadSession()
   }, [sessionId])
+
+  // [3b-3] 渲染源：从 V2 状态派生。inverted 列表需最新在前，故 reverse。
+  // 参照官方：无混合列表、无 loading 占位——数据层只有干净的 message/part。
+  // revert 态时：隐藏撤回点及之后的消息，顶部叠加 RevertBanner（独立于消息流）。
+  const renderMessages = useMemo<ListItem[]>(() => {
+    const adapted = adaptMessages(v2State.messages, v2State.parts)
+    if (revertMessageId) {
+      const revertIdx = adapted.findIndex((m) => m.id === revertMessageId)
+      if (revertIdx >= 0) {
+        const before = adapted.slice(0, revertIdx)
+        // 统计被撤回的 user 消息数（撤回点及之后）。
+        let count = 0
+        for (let i = revertIdx; i < adapted.length; i++) if (adapted[i].role === 'user') count++
+        const diffFiles = parseRevertDiff(revertDiff || '')
+        const banner: RevertBannerMsg = { id: 'revert-banner', role: 'revert-banner', revertedCount: count, diffFiles }
+        return [banner, ...before.reverse()]
+      }
+    }
+    return adapted.reverse()
+  }, [v2State, revertMessageId, revertDiff])
 
   useEffect(() => {
     if (!parentID || !cwd) return
@@ -556,8 +508,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     let aborted = false
     let lastProcessed = 0
     let buf = ''
-    const reasoningPartIds = new Set<string>()
-    const messageRoles = new Map<string, 'user' | 'assistant'>()
 
     const connect = () => {
       if (aborted) return
@@ -592,168 +542,44 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           const evType: string = payload?.type || ''
           const props = payload?.properties || {}
 
-          if (evType === 'message.updated') {
-            const info = props.info
-            if (info?.sessionID === sessionId && (info.role === 'user' || info.role === 'assistant')) {
-              messageRoles.set(info.id, info.role)
+          // [3b-3 影子模式] 把 V2 事件同步喂给 v2Reducer（仅更新 v2State，不接管渲染）。
+          // 只关心当前会话。事后接管渲染时，这段升级为唯一消息来源。
+          {
+            if (evType === 'message.updated' && props.info?.sessionID === sessionId) {
+              v2Dispatch({ type: 'message.upsert', message: props.info })
+            } else if (evType === 'message.removed' && props.sessionID === sessionId) {
+              v2Dispatch({ type: 'message.remove', messageID: props.messageID })
+            } else if (evType === 'message.part.updated' && props.part?.sessionID === sessionId) {
+              v2Dispatch({ type: 'part.upsert', part: props.part })
+            } else if (evType === 'message.part.removed' && props.sessionID === sessionId) {
+              v2Dispatch({ type: 'part.remove', messageID: props.messageID, partID: props.partID })
+            } else if (evType === 'message.part.delta' && props.sessionID === sessionId) {
+              v2Dispatch({ type: 'part.delta', messageID: props.messageID, partID: props.partID, field: props.field, delta: props.delta })
             }
-            continue
           }
 
-          if (evType === 'session.idle' && props.sessionID === sessionId) { dispatch({ type: 'session/sending', sending: false }); setError(null); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
-          if (evType === 'session.status' && props.status?.type === 'idle' && props.sessionID === sessionId) { dispatch({ type: 'session/sending', sending: false }); setError(null); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
+          if (evType === 'session.idle' && props.sessionID === sessionId) { dispatch({ type: 'session/sending', sending: false }); setError(null); continue }
+          if (evType === 'session.status' && props.status?.type === 'idle' && props.sessionID === sessionId) { dispatch({ type: 'session/sending', sending: false }); setError(null); continue }
           if (evType === 'session.status' && props.status?.type === 'busy' && props.sessionID === sessionId) { dispatch({ type: 'session/sending', sending: true }); continue }
           if (evType === 'session.status' && props.status?.type === 'retry' && props.sessionID === sessionId) { dispatch({ type: 'session/sending', sending: true }); setError(`⚠️ ${props.status.message}`); continue }
           if (evType === 'session.next.compaction.started' && props.sessionID === sessionId) { setError('正在压缩对话...'); continue }
-          if (evType === 'session.next.compaction.ended' && props.sessionID === sessionId) {
-            setError(null)
-            setMessages((prev) => {
-              const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
-              const compactionMsg: CompactionMsg = {
-                id: props.messageID || `compact-${Date.now()}`,
-                role: 'compaction',
-                reason: props.reason || 'auto',
-                summary: props.text || '',
-                recent: props.recent || '',
-              }
-              return [compactionMsg, ...filtered]
-            })
-            continue
-          }
+          if (evType === 'session.next.compaction.ended' && props.sessionID === sessionId) { setError(null); continue }
           if (evType === 'session.compacted' && props.sessionID === sessionId) { setError(null); continue }
           if (evType === 'session.error') {
             dispatch({ type: 'session/sending', sending: false })
             const isAbort = props.error?.name === 'MessageAbortedError'
-            const errMsg = formatSessionError(props.error)
-            if (!isAbort) setError(errMsg)
-            setMessages((prev) => {
-              const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
-              const errorId = `error-${Date.now()}`
-              return [{ id: errorId, role: 'assistant', reasoning: { text: '', isActive: false }, content: `⚠️ ${errMsg}`, toolCalls: [] }, ...filtered]
-            })
+            if (!isAbort) setError(formatSessionError(props.error))
             continue
           }
 
-          if (evType === 'message.part.updated') {
-            const part = props.part
-            if (!part || !part.id) continue
-            if (part.sessionID !== sessionId) continue
-            const msgID: string = part.messageID
-            const partType: string = part.type
-            const partText: string = part.text || ''
-
-            if (partType === 'reasoning' && partText === '') {
-              reasoningPartIds.add(part.id)
-              setMessages((prev) => {
-                const exists = prev.find((m) => m.id === msgID)
-                if (exists) {
-                  if (isAssistant(exists)) {
-                    return prev.map((m) => m.id === msgID ? { ...m, reasoning: { text: '', isActive: true } } : m)
-                  }
-                  return prev.map((m) => m.id === msgID ? { ...m, role: 'assistant', reasoning: { text: '', isActive: true }, content: m.role === 'user' ? m.text : '', toolCalls: [] } : m)
-                }
-                dispatch({ type: 'session/sending', sending: true })
-                const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
-                return [{ id: msgID, role: 'assistant', reasoning: { text: '', isActive: true }, content: '', toolCalls: [] }, ...filtered]
-              })
-              continue
-            }
-
-            if (partType === 'reasoning' && partText !== '') {
-              setMessages((prev) => prev.map((m) =>
-                m.id === msgID
-                  ? m.role === 'assistant'
-                    ? { ...m, reasoning: { text: partText, isActive: false } }
-                    : { ...m, role: 'assistant', reasoning: { text: partText, isActive: false }, content: m.role === 'user' ? m.text : '', toolCalls: [] }
-                  : m
-              ))
-              continue
-            }
-
-            if (partType === 'text') {
-              setMessages((prev) => {
-                const role = messageRoles.get(msgID)
-                const exists = prev.find((m) => m.id === msgID)
-                const hasPendingUser = prev.some((m) => m.id.startsWith('u-') && m.role === 'user')
-                const hasLoading = prev.some((m) => m.id.startsWith('loading-'))
-                if (role === 'assistant') return mergeAssistantText(prev, msgID, partText)
-                if (exists && isAssistant(exists)) return mergeAssistantText(prev, msgID, partText)
-                if (!exists && hasLoading && !hasPendingUser) return mergeAssistantText(prev, msgID, partText)
-                return mergeMessageText(prev, msgID, partText)
-              })
-              continue
-            }
-
-            if (partType === 'tool') {
-              setMessages((prev) => prev.map((m) => {
-                if (m.id !== msgID || !isAssistant(m)) return m
-                const tc: ToolCall = {
-                  id: part.id,
-                  name: part.tool || part.name || '',
-                  status: mapToolStatus(part.state?.status || 'running'),
-                  input: part.state?.input,
-                  output: part.state?.output,
-                  metadata: { ...(part.state?.metadata || {}), ...(part.metadata || {}) },
-                }
-                const existing = m.toolCalls.find((t) => t.id === part.id)
-                if (existing) {
-                  return { ...m, toolCalls: m.toolCalls.map((t) => t.id === part.id ? { ...tc, metadata: { ...existing.metadata, ...tc.metadata } } : t) }
-                }
-                return { ...m, toolCalls: [...m.toolCalls, tc] }
-              }))
-              continue
-            }
-
-            if (partType === 'step-finish') {
-              const t = part.tokens
-              if (t && tokenSum(t) > 0) setContextTokens(tokenSum(t))
-              if (part.reason === 'stop') dispatch({ type: 'session/sending', sending: false })
-              continue
-            }
-
-            if (partType === 'file') {
-              const fileData = { url: part.url, mime: part.mime, filename: part.filename }
-              setMessages((prev) => mergeMessageFile(prev, msgID, fileData))
-              continue
-            }
-
+          // step-finish：更新上下文 token 用量（消息内容由 v2Reducer 处理）。
+          if (evType === 'message.part.updated' && props.part?.type === 'step-finish' && props.part?.sessionID === sessionId) {
+            const t = props.part.tokens
+            if (t && tokenSum(t) > 0) setContextTokens(tokenSum(t))
             continue
           }
 
-            if (evType === 'message.part.delta') {
-              const { messageID, partID, delta, sessionID: evSessionID } = props
-              if (!delta || !partID || !messageID) continue
-              if (evSessionID !== sessionId) continue
-
-              const isReasoningDelta = reasoningPartIds.has(partID)
-
-              setMessages((prev) => {
-                const anyExists = prev.find((m) => m.id === messageID)
-                if (!anyExists) {
-                  const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
-                  if (isReasoningDelta) {
-                    return [{ id: messageID, role: 'assistant', reasoning: { text: delta, isActive: true }, content: '', toolCalls: [] }, ...filtered]
-                  }
-                  return [{ id: messageID, role: 'assistant', reasoning: { text: '', isActive: false }, content: delta, toolCalls: [] }, ...filtered]
-                }
-                return prev.map((m) => {
-                  if (m.id !== messageID) return m
-                  if (isReasoningDelta) {
-                    if (isAssistant(m)) {
-                      return { ...m, reasoning: { ...m.reasoning, text: m.reasoning.text + delta } }
-                    }
-                    return { ...m, role: 'assistant', reasoning: { text: delta, isActive: true }, content: m.role === 'user' ? m.text : '', toolCalls: [] }
-                  }
-                  if (isAssistant(m)) {
-                    return { ...m, content: m.content + delta }
-                  }
-                  return { ...m, role: 'assistant', content: (m.role === 'user' ? m.text : '') + delta, reasoning: { text: '', isActive: false }, toolCalls: [] }
-                })
-              })
-              continue
-            }
-
-            if (evType === 'permission.asked') {
+          if (evType === 'permission.asked') {
               const req = props as PermissionRequest
               dispatch({ type: 'permission/asked', request: req })
               continue
@@ -913,26 +739,14 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       setError(null)
       setRevertMessageId(sessionData.revert.messageID)
       setRevertDiff(sessionData.revert.diff || null)
-
-      try {
-        const raw = await client.getMessages(sessionId)
-        const m: Message[] = parseMessages(raw)
-
-        const revertIdx = m.findIndex((msg) => msg.id === revertMessageId)
-        if (revertIdx >= 0) {
-          const before = m.slice(0, revertIdx)
-          const diffFiles = parseRevertDiff(sessionData.revert.diff || '')
-          const revertedText = findRevertedMessageText(m, revertIdx)
-          setMessages(buildRevertedList(before, countRevertedMessages(m, revertIdx), diffFiles))
-          if (revertedText) setInput(revertedText)
-        } else {
-          setMessages(m.reverse())
-        }
-      } catch {
-        // revert 已生效，仅消息列表刷新失败：不再弹错打断，下次进会话/刷新会自动恢复。
+      // 回填被撤回的那条用户输入到输入框（从当前 V2 消息里取，无需再拉取）。
+      const reverted = v2State.messages.find((m) => m.id === revertMessageId)
+      if (reverted && (reverted as any).role === 'user') {
+        const textPart = (v2State.parts[reverted.id] || []).find((p) => p.type === 'text') as any
+        if (textPart?.text) setInput(textPart.text)
       }
     }
-  }, [client, sessionId, cwd, toast])
+  }, [client, sessionId, cwd, toast, v2State])
 
   const handleUnrevert = useCallback(async () => {
     try {
@@ -940,10 +754,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       setRevertMessageId(null)
       setRevertDiff(null)
       setError(null)
-
-      const raw = await client.getMessages(sessionId)
-      const m: Message[] = parseMessages(raw)
-      setMessages(m.reverse())
+      // 消息仍在 v2State 中，清除 revert 态后 renderMessages 会自动全部重新显示。
     } catch (e: any) {
       toast.error(e?.message || '撤销回退失败')
     }
@@ -958,6 +769,15 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     }
   }, [client, sessionId, cwd, toast])
 
+  const handleCompact = useCallback(async () => {
+    try {
+      toast.show('正在压缩对话...', 'info')
+      await client.summarizeSession(sessionId, currentModel?.modelID, currentModel?.providerID)
+    } catch (e: any) {
+      toast.error(e?.message || '压缩失败')
+    }
+  }, [client, sessionId, currentModel, toast])
+
   const handleSend = useCallback(async () => {
     if (!canSendMessage(input, attachments) || sending || !sessionId) return
     dispatch({ type: 'session/sending', sending: true })
@@ -970,14 +790,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     const currentAttachments = attachments
     setInput('')
     setAttachments([])
-
-    const userMsgId = `u-${Date.now()}`
-    const loadingMsgId = `loading-${Date.now()}`
-    setMessages((prev) => [
-      { id: loadingMsgId, role: 'assistant', reasoning: { text: '', isActive: false }, content: '', toolCalls: [] },
-      { id: userMsgId, role: 'user', text, files: currentAttachments.map(a => ({ url: `data:${a.mime};base64,${a.base64}`, mime: a.mime, filename: a.filename })) },
-      ...prev,
-    ])
 
     try {
       const parts: any[] = [{ type: 'text' as any, text }]
@@ -993,7 +805,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     } catch (e: any) {
       dispatch({ type: 'session/sending', sending: false })
       setError(`发送失败: ${e.message}`)
-      setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-')))
     }
   }, [input, sending, sessionId, client, currentModel, currentAgent, attachments])
 
@@ -1140,7 +951,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           </View>
         )}
 
-        {messages.length === 0 ? (
+        {renderMessages.length === 0 ? (
           <>
             <View style={styles.emptyWrapper}>
               {renderEmpty()}
@@ -1186,7 +997,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
               <FlatList
                 ref={flatListRef}
                 inverted
-                data={messages}
+                data={renderMessages}
                 keyExtractor={(item) => item.id}
               renderItem={({ item }: { item: ListItem }) => {
                 if (isRevertBanner(item)) {
@@ -1285,7 +1096,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
         />
       )}
 
-      {showScrollButton && messages.length > 0 && (
+      {showScrollButton && renderMessages.length > 0 && (
           <Animated.View style={[styles.scrollButton, { opacity: scrollButtonOpacity, backgroundColor: theme.surface, borderColor: theme.border }]}>
             <TouchableOpacity onPress={() => { isAtBottom.current = true; userScrolling.current = false; lastOffset.current = 0; scrollToBottom() }} style={styles.scrollButtonTouch} activeOpacity={0.7}>
               <Feather name="chevron-down" size={20} color={theme.textSecondary} />
@@ -1295,7 +1106,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
         {cwd && (
           <Animated.View style={[styles.fabContainer, { transform: fabPan.getTranslateTransform() }]} {...fabPanResponder.panHandlers}>
-            <FabMenu visible={fabMenuVisible} theme={theme} onToolPress={(tool) => { setFabMenuVisible(false); if (tool === 'git') navigation.push('Git', { directory: cwd }); else if (tool === 'terminal') navigation.push('Terminal', { directory: cwd }) }} />
+            <FabMenu visible={fabMenuVisible} theme={theme} onToolPress={(tool) => { setFabMenuVisible(false); if (tool === 'git') navigation.push('Git', { directory: cwd }); else if (tool === 'terminal') navigation.push('Terminal', { directory: cwd }); else if (tool === 'compact') handleCompact() }} />
             <Animated.View style={[styles.fab, { backgroundColor: theme.accent, transform: [{ rotate: fabRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] }) }] }]}>
               <Feather name="tool" size={22} color="#fff" />
             </Animated.View>

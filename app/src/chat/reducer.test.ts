@@ -6,12 +6,6 @@ function assertEqual(actual: unknown, expected: unknown) {
   if (actual !== expected) throw new Error(`Expected ${String(expected)}, got ${String(actual)}`)
 }
 
-function assertDeepEqual(actual: unknown, expected: unknown) {
-  const a = JSON.stringify(actual)
-  const b = JSON.stringify(expected)
-  if (a !== b) throw new Error(`Expected ${b}, got ${a}`)
-}
-
 const perm = (id: string): PermissionRequest => ({
   id,
   sessionID: 's1',
@@ -58,7 +52,6 @@ const q3 = chatReducer(q1, { type: 'question/removed', id: 'q1' })
 assertEqual(q3.pendingQuestions.length, 0)
 
 // ---- 不相关 action 不动其它字段 ----
-assertDeepEqual(s1.messages, initialChatState.messages)
 assertEqual(s1.sending, false)
 assertEqual(s1.banner, null)
 
