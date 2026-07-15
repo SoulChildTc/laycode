@@ -126,6 +126,47 @@ laycode/
 └── README.md
 ```
 
+## 📜 命令一览
+
+所有命令在项目根目录运行（`pnpm <script>`）。
+
+### 开发
+
+| 命令 | 说明 |
+|---|---|
+| `pnpm install` | 安装所有 workspace 依赖 |
+| `pnpm bridge` | 构建并前台运行 Bridge（别名 `pnpm server`），`Ctrl+C` 结束 |
+| `pnpm app` | 启动 App 开发服务器（别名 `pnpm mobile`），用 Expo Go 扫码 |
+
+### 构建
+
+| 命令 | 说明 |
+|---|---|
+| `pnpm build:bridge` | 只构建 Bridge（`laycode-cli`） |
+| `pnpm build:dev-apk` | EAS 构建 Android development APK |
+| `pnpm build:preview-apk` | EAS 构建 Android preview APK |
+| `pnpm build:prod-apk` | EAS 构建 Android 生产 APK |
+| `pnpm build:prod-aab` | EAS 构建 Android 生产 AAB（上架用） |
+
+### 版本与发布
+
+脚本要求工作区干净（先提交业务代码），`push` 由你手动执行。Bridge 与 App 各自独立，版本号互不绑定。
+
+| 命令 | 说明 |
+|---|---|
+| `pnpm release:bridge <patch\|minor\|major> [--dry-run]` | **Bridge 发版**：升级 `laycode-cli` 版本 → 构建 → 发布到 npm → 提交并打 tag `v*`；失败自动回滚 |
+| `pnpm version:app <patch\|minor\|major> [--dry-run]` | **App 升版本号**：同步改 `app/package.json` 与 `app/app.json` → 提交并打 tag `app-v*`。只改版本号，不发布（产物走 EAS build，build number 由 EAS 管理） |
+
+> 说明：Bridge 发到 npm，所以 `release:bridge` 是真正的「发版」（含发布）。App 不发 npm，产物由 EAS 构建，所以只有「升版本号」这一步，命名为 `version:app` 以示区别。
+
+App 产物的构建（CI，触发 GitHub Actions）：
+
+| 命令 | 说明 |
+|---|---|
+| `pnpm release:apk` | 构建生产 APK |
+| `pnpm release:aab` | 构建生产 AAB |
+| `pnpm release:preview` | 构建 preview 包 |
+
 ## 🛠️ Tech Stack
 
 ### App
