@@ -246,7 +246,7 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
                     returnKeyType="default"
                   />
                 </View>
-                <View style={styles.buttonRow}>
+                <View style={[styles.buttonRow, styles.rejectButtonRow]}>
                   <TouchableOpacity
                     style={[styles.actionBtn, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
                     onPress={handleRejectCancel}
@@ -338,6 +338,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 8,
+  },
+  rejectButtonRow: {
+    marginTop: 12,
   },
   actionBtn: {
     flexDirection: 'row',

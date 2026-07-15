@@ -113,14 +113,7 @@ export function v2Reducer(state: V2State, action: V2Action): V2State {
       return { messages: action.messages, parts: action.parts, partDelta: {} }
     }
 
-    case 'reset': {
-      return initialV2StateRef
-    }
-
     default:
       return state
   }
 }
-
-// reset 复用同一个空对象引用，避免每次生成新对象。
-const initialV2StateRef: V2State = { messages: [], parts: {}, partDelta: {} }

@@ -35,5 +35,3 @@ export type V2Action =
   | { type: 'part.delta'; messageID: string; partID: string; field: string; delta: string }
   // 进会话 / 断线恢复：用投影拉取的完整消息+part 整体重建。
   | { type: 'hydrate'; messages: Message[]; parts: Record<string, Part[]> }
-  // 清空（切换会话时）。
-  | { type: 'reset' }

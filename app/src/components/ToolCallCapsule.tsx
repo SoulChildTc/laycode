@@ -76,14 +76,26 @@ function ToolSpinner({ color }: { color: string }) {
   )
 }
 
-function DetailContent({ name, config, input, output, theme }: {
+function DetailContent({ name, config, input, output, theme, isError }: {
   name: string
   config: ReturnType<typeof getToolConfig>
   input: any
   output: any
   theme: Theme
+  isError?: boolean
 }) {
   const maxLines = config.maxLines || 15
+
+  // error 状态：统一显示错误原因文本，不走工具专属详情（很多工具 detail:'none' 不渲染 output）。
+  if (isError) {
+    const text = typeof output === 'string' ? output : formatOutput(output)
+    if (!text) return null
+    return (
+      <View style={styles.detailSectionCompact}>
+        <Text style={[styles.errorDetailText, { color: theme.toolErrorText }]}>{text}</Text>
+      </View>
+    )
+  }
 
   if (config.detail === 'diff') {
     if (name === 'edit') {
@@ -172,6 +184,8 @@ export default function ToolCallCapsule({ name, status, input, output, resultCou
   const taskDescription = isTask ? input?.description || input?.prompt || '' : ''
 
   const canExpand = !isTask && !compact && (() => {
+    // error 状态：只要有 output（错误原因）就允许展开，让用户能点开查看失败原因。
+    if (status === 'error') return !!output
     if (config.detail === 'none') return false
     if (config.detail === 'input-output') return !!(input || output)
     if (config.detail === 'results') return !!output
@@ -250,8 +264,8 @@ export default function ToolCallCapsule({ name, status, input, output, resultCou
         {status === 'completed' && resultCount != null && !expanded && (
           <Text style={[styles.meta, { color: codeAlpha(colors.text, 0.6) }]}>{resultCount} 条结果</Text>
         )}
-        {status === 'error' && (
-          <Text style={[styles.meta, { color: codeAlpha(colors.text, 0.6) }]}>重试</Text>
+        {status === 'error' && !expanded && (
+          <Text style={[styles.meta, { color: colors.text }]}>失败</Text>
         )}
 
         {canExpand && (
@@ -267,7 +281,7 @@ export default function ToolCallCapsule({ name, status, input, output, resultCou
           config.detail === 'full-content' && { borderWidth: 0 },
           { backgroundColor: theme.codeBg, borderColor: theme.border }
         ]}>
-          <DetailContent name={name} config={config} input={input} output={output} theme={theme} />
+          <DetailContent name={name} config={config} input={input} output={output} theme={theme} isError={status === 'error'} />
         </View>
       )}
     </View>
@@ -300,6 +314,11 @@ const styles = StyleSheet.create({
   },
   detailSectionCompact: {
     padding: 0,
+  },
+  errorDetailText: {
+    fontSize: 13,
+    lineHeight: 19,
+    padding: 10,
   },
   taskCapsule: {
     flexDirection: 'row',

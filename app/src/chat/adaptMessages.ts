@@ -22,7 +22,8 @@ function toolFromPart(p: any): ToolCall {
     name: p.tool || p.name || '',
     status: mapToolStatus(p.state?.status || 'completed'),
     input: p.state?.input,
-    output: p.state?.output,
+    // error 状态的原因在 state.error（V2 无 output 字段），回退取它以便展开查看失败原因。
+    output: p.state?.output ?? p.state?.error,
     metadata: { ...(p.state?.metadata || {}), ...(p.metadata || {}) },
   }
 }

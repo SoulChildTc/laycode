@@ -79,10 +79,6 @@ eq(s.messages.map((m) => m.id), ['x1'], 'hydrate replaces messages')
 eq((s.parts['x1'][0] as any).text, 'hi', 'hydrate replaces parts')
 eq(s.partDelta, {}, 'hydrate clears delta accum')
 
-// ---- reset ----
-s = v2Reducer(s, { type: 'reset' })
-eq(s.messages, [], 'reset clears messages')
-
 // ---- 纯函数：原 state 不被修改 ----
 eq(initialV2State.messages, [], 'initial state untouched')
 
