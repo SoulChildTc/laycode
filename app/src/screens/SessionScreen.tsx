@@ -17,7 +17,7 @@ import RevertBanner from '../components/RevertBanner'
 import FabMenu from '../components/FabMenu'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import { useAgents } from '../hooks/useAgents'
-import type { ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, QuestionRequest, ServerEntry, ListItem, RevertBannerMsg, FileAttachment } from '../types'
+import type { ToolCall, ModelKey, Provider, Agent, PermissionRequest, PermissionReply, QuestionRequest, ServerEntry, ListItem, RevertBannerMsg, UserMsg, FileAttachment } from '../types'
 import { isRevertBanner, isCompaction } from '../types'
 import { storageKey } from '../utils/storage'
 import { parseRevertDiff } from '../utils/revertDiff'
@@ -70,6 +70,8 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [cwd, setCwd] = useState('')
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<FileAttachment[]>([])
+  // 乐观回显：发送后到真实 user 消息事件到达前，先显示这条。纯视图层叠加，不进 v2Reducer。
+  const [pendingSend, setPendingSend] = useState<UserMsg | null>(null)
   const setError = useCallback((msg: string | null) => {
     dispatch({ type: 'banner/set', banner: msg ? { text: msg } : null })
   }, [])
@@ -376,12 +378,14 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   }, [sessionId, client, cwd])
 
   useEffect(() => {
+    setPendingSend(null)
     if (sessionId) reloadSession()
   }, [sessionId])
 
   // [3b-3] 渲染源：从 V2 状态派生。inverted 列表需最新在前，故 reverse。
   // 参照官方：无混合列表、无 loading 占位——数据层只有干净的 message/part。
   // revert 态时：隐藏撤回点及之后的消息，顶部叠加 RevertBanner（独立于消息流）。
+  // pendingSend：乐观回显的用户消息叠加在最新处（inverted 列表的最前 = 视觉最底）。
   const renderMessages = useMemo<ListItem[]>(() => {
     const adapted = adaptMessages(v2State.messages, v2State.parts)
     if (revertMessageId) {
@@ -396,8 +400,20 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
         return [banner, ...before.reverse()]
       }
     }
-    return adapted.reverse()
-  }, [v2State, revertMessageId, revertDiff])
+    const list = adapted.reverse()
+    return pendingSend ? [pendingSend, ...list] : list
+  }, [v2State, revertMessageId, revertDiff, pendingSend])
+
+  // 真实 user 消息到达后清除乐观回显：v2State 里出现与 pendingSend 文本相同的 user 消息即视为已落地。
+  useEffect(() => {
+    if (!pendingSend) return
+    const arrived = v2State.messages.some((m) => {
+      if ((m as any).role !== 'user') return false
+      const textPart = (v2State.parts[m.id] || []).find((p) => p.type === 'text') as any
+      return (textPart?.text || '') === pendingSend.text
+    })
+    if (arrived) setPendingSend(null)
+  }, [v2State, pendingSend])
 
   useEffect(() => {
     if (!parentID || !cwd) return
@@ -790,6 +806,13 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     const currentAttachments = attachments
     setInput('')
     setAttachments([])
+    // 乐观回显：立即显示这条用户消息，真实事件到达后由 useEffect 清除。
+    setPendingSend({
+      id: `pending-${Date.now()}`,
+      role: 'user',
+      text,
+      files: currentAttachments.map((a) => ({ url: `data:${a.mime};base64,${a.base64}`, mime: a.mime, filename: a.filename })),
+    })
 
     try {
       const parts: any[] = [{ type: 'text' as any, text }]
@@ -805,6 +828,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     } catch (e: any) {
       dispatch({ type: 'session/sending', sending: false })
       setError(`发送失败: ${e.message}`)
+      setPendingSend(null)
     }
   }, [input, sending, sessionId, client, currentModel, currentAgent, attachments])
 
