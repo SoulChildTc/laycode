@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo, useReducer } from 'react'
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform, Animated, Modal, KeyboardAvoidingView, AppState, AppStateStatus, PanResponder, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -23,6 +23,8 @@ import { stripThinking } from '../utils/segmentParts'
 import { storageKey } from '../utils/storage'
 import { parseRevertDiff } from '../utils/revertDiff'
 import { canSendMessage, mergeAssistantText, mergeMessageFile, mergeMessageText } from '../utils/messageParts'
+import { chatReducer } from '../chat/reducer'
+import { initialChatState } from '../chat/types'
 import * as ImagePicker from 'expo-image-picker'
 import * as DocumentPicker from 'expo-document-picker'
 import { File } from 'expo-file-system'
@@ -127,7 +129,6 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [sessionTitle, setSessionTitle] = useState(routeTitle || sessionId?.slice(0, 8) || '')
   const [cwd, setCwd] = useState('')
   const [input, setInput] = useState('')
-  const [sending, setSending] = useState(false)
   const [attachments, setAttachments] = useState<FileAttachment[]>([])
   const [sessionBanner, setSessionBanner] = useState<{ text: string; bg?: string } | null>(null)
   const setError = useCallback((msg: string | null) => {
@@ -141,8 +142,8 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const [showRenameModal, setShowRenameModal] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [agentSelectorVisible, setAgentSelectorVisible] = useState(false)
-  const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([])
-  const [pendingQuestions, setPendingQuestions] = useState<QuestionRequest[]>([])
+  const [chatState, dispatch] = useReducer(chatReducer, initialChatState)
+  const { pendingPermissions, pendingQuestions, sending } = chatState
   const [defaultModel, setDefaultModel] = useState<ModelKey | null>(null)
   const [revertMessageId, setRevertMessageId] = useState<string | null>(null)
   const [revertDiff, setRevertDiff] = useState<string | null>(null)
@@ -264,7 +265,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       ])
     }
 
-    setPendingPermissions((prev) => prev.filter((p) => p.id !== req.id))
+    dispatch({ type: 'permission/removed', id: req.id })
 
     try {
       await client.replyPermission(req.id, reply, message, cwd || undefined)
@@ -276,7 +277,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const handleQuestionReply = useCallback(async (answers: string[][]) => {
     const req = pendingQuestions[0]
     if (!req) return
-    setPendingQuestions((prev) => prev.filter((q) => q.id !== req.id))
+    dispatch({ type: 'question/removed', id: req.id })
     try {
       await client.replyQuestion(req.id, answers, cwd || undefined)
     } catch (e: any) {
@@ -287,7 +288,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   const handleQuestionReject = useCallback(async () => {
     const req = pendingQuestions[0]
     if (!req) return
-    setPendingQuestions((prev) => prev.filter((q) => q.id !== req.id))
+    dispatch({ type: 'question/removed', id: req.id })
     try {
       await client.rejectQuestion(req.id, cwd || undefined)
     } catch (e: any) {
@@ -357,14 +358,18 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           setContextTokens(newTokens)
         }
 
-        // Infer session activity from running tool calls or incomplete messages
-        const hasRunning = (raw as any[]).some((item: any) => {
-          if (item.info?.role !== 'assistant') return false
-          if ((item.parts || []).some((p: any) => p.type === 'tool' && (p.state?.status === 'running' || p.state?.status === 'pending'))) return true
-          if (!item.info?.finish) return true
-          return false
-        })
-        setSending(hasRunning)
+        // Infer session activity from the LAST assistant message only.
+        // 只看最后一条 assistant 消息是否完成，避免历史里某条异常/中止的老消息
+        // （缺 time.completed）把整个会话误判为「运行中」。
+        const lastAssistantMsg = (raw as any[]).findLast((item: any) => item.info?.role === 'assistant')
+        const hasRunning = !!lastAssistantMsg && (() => {
+          const parts = lastAssistantMsg.parts || []
+          if (parts.some((p: any) => p.type === 'tool' && (p.state?.status === 'running' || p.state?.status === 'pending'))) return true
+          // 完成标志：time.completed（权威）或 finish（旧字段，兜底）。二者皆无才算未完成。
+          const completed = lastAssistantMsg.info?.time?.completed != null || !!lastAssistantMsg.info?.finish
+          return !completed
+        })()
+        dispatch({ type: 'session/sending', sending: hasRunning })
 
         const lastMsg = (raw as any[]).findLast(() => true)
         if (lastMsg?.info?.agent) {
@@ -400,16 +405,10 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           client.listPendingQuestions(dir).catch(() => []),
         ])
         if (reqs.length > 0) {
-          setPendingPermissions((prev) => {
-            const existing = new Set(prev.map((p) => p.id))
-            return [...prev, ...reqs.filter((r: any) => !existing.has(r.id))]
-          })
+          for (const r of reqs) dispatch({ type: 'permission/asked', request: r })
         }
         if (qs.length > 0) {
-          setPendingQuestions((prev) => {
-            const existing = new Set(prev.map((q) => q.id))
-            return [...prev, ...qs.filter((r: any) => !existing.has(r.id))]
-          })
+          for (const q of qs) dispatch({ type: 'question/asked', request: q })
         }
       }
     } catch (e: any) {
@@ -602,10 +601,10 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             continue
           }
 
-          if (evType === 'session.idle' && props.sessionID === sessionId) { setSending(false); setError(null); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
-          if (evType === 'session.status' && props.status?.type === 'idle' && props.sessionID === sessionId) { setSending(false); setError(null); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
-          if (evType === 'session.status' && props.status?.type === 'busy' && props.sessionID === sessionId) { setSending(true); continue }
-          if (evType === 'session.status' && props.status?.type === 'retry' && props.sessionID === sessionId) { setSending(true); setError(`⚠️ ${props.status.message}`); continue }
+          if (evType === 'session.idle' && props.sessionID === sessionId) { dispatch({ type: 'session/sending', sending: false }); setError(null); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
+          if (evType === 'session.status' && props.status?.type === 'idle' && props.sessionID === sessionId) { dispatch({ type: 'session/sending', sending: false }); setError(null); setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-'))); continue }
+          if (evType === 'session.status' && props.status?.type === 'busy' && props.sessionID === sessionId) { dispatch({ type: 'session/sending', sending: true }); continue }
+          if (evType === 'session.status' && props.status?.type === 'retry' && props.sessionID === sessionId) { dispatch({ type: 'session/sending', sending: true }); setError(`⚠️ ${props.status.message}`); continue }
           if (evType === 'session.next.compaction.started' && props.sessionID === sessionId) { setError('正在压缩对话...'); continue }
           if (evType === 'session.next.compaction.ended' && props.sessionID === sessionId) {
             setError(null)
@@ -624,7 +623,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           }
           if (evType === 'session.compacted' && props.sessionID === sessionId) { setError(null); continue }
           if (evType === 'session.error') {
-            setSending(false)
+            dispatch({ type: 'session/sending', sending: false })
             const isAbort = props.error?.name === 'MessageAbortedError'
             const errMsg = formatSessionError(props.error)
             if (!isAbort) setError(errMsg)
@@ -654,7 +653,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                   }
                   return prev.map((m) => m.id === msgID ? { ...m, role: 'assistant', reasoning: { text: '', isActive: true }, content: m.role === 'user' ? m.text : '', toolCalls: [] } : m)
                 }
-                setSending(true)
+                dispatch({ type: 'session/sending', sending: true })
                 const filtered = prev.filter((m) => !m.id.startsWith('loading-'))
                 return [{ id: msgID, role: 'assistant', reasoning: { text: '', isActive: true }, content: '', toolCalls: [] }, ...filtered]
               })
@@ -709,7 +708,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
             if (partType === 'step-finish') {
               const t = part.tokens
               if (t && tokenSum(t) > 0) setContextTokens(tokenSum(t))
-              if (part.reason === 'stop') setSending(false)
+              if (part.reason === 'stop') dispatch({ type: 'session/sending', sending: false })
               continue
             }
 
@@ -757,11 +756,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
             if (evType === 'permission.asked') {
               const req = props as PermissionRequest
-              setPendingPermissions((prev) => {
-                const exists = prev.find((p) => p.id === req.id)
-                if (exists) return prev
-                return [...prev, req]
-              })
+              dispatch({ type: 'permission/asked', request: req })
               continue
             }
 
@@ -769,18 +764,14 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
               const { permissionID, requestID } = props
               const id = requestID || permissionID
               if (id) {
-                setPendingPermissions((prev) => prev.filter((p) => p.id !== id))
+                dispatch({ type: 'permission/removed', id })
               }
               continue
             }
 
             if (evType === 'question.asked') {
               const req = props as QuestionRequest
-              setPendingQuestions((prev) => {
-                const exists = prev.find((q) => q.id === req.id)
-                if (exists) return prev
-                return [...prev, req]
-              })
+              dispatch({ type: 'question/asked', request: req })
               continue
             }
 
@@ -788,7 +779,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
               const { requestID, questionID } = props
               const id = requestID || questionID
               if (id) {
-                setPendingQuestions((prev) => prev.filter((q) => q.id !== id))
+                dispatch({ type: 'question/removed', id })
               }
               continue
             }
@@ -911,7 +902,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
       return
     }
     if (sessionData?.revert) {
-      setSending(false)
+      dispatch({ type: 'session/sending', sending: false })
       setError(null)
       setRevertMessageId(sessionData.revert.messageID)
       setRevertDiff(sessionData.revert.diff || null)
@@ -952,7 +943,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
   }, [client, sessionId, cwd, toast])
 
   const handleAbort = useCallback(async () => {
-    setSending(false)
+    dispatch({ type: 'session/sending', sending: false })
     try {
       await client.abortSession(sessionId, cwd)
     } catch (e: any) {
@@ -962,7 +953,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
   const handleSend = useCallback(async () => {
     if (!canSendMessage(input, attachments) || sending || !sessionId) return
-    setSending(true)
+    dispatch({ type: 'session/sending', sending: true })
     setError(null)
     // 发送新消息是明确的「看最新」意图：恢复贴底跟随。
     isAtBottom.current = true
@@ -998,7 +989,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
         body,
       })
     } catch (e: any) {
-      setSending(false)
+      dispatch({ type: 'session/sending', sending: false })
       setError(`发送失败: ${e.message}`)
       setMessages((prev) => prev.filter((m) => !m.id.startsWith('loading-')))
     }
