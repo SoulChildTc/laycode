@@ -70,6 +70,21 @@ if (git(['status', '--porcelain'])) {
   process.exit(1)
 }
 
+// 发布摘要：先展示当前 / 目标版本，让用户看清再决定，然后才真正升版号。
+const targetVer = nextVersion(bridgeVer, bump)
+console.log('\n──────── 发布 laycode-cli ────────')
+console.log(`  当前版本：${bridgeVer}`)
+console.log(`  升级类型：${bump}`)
+console.log(`  目标版本：${targetVer}`)
+console.log(`  发布到：  ${NPM_REGISTRY}`)
+console.log('──────────────────────────────────')
+
+const proceed = await confirm(`\n确认升级到 ${targetVer} 并发布？(y/N) `)
+if (!proceed) {
+  console.error('已取消，未做任何修改。')
+  process.exit(0)
+}
+
 // 1. 升级版本号
 run('pnpm', ['--filter', 'laycode-cli', 'exec', 'npm', 'version', bump, '--no-git-tag-version'])
 const newVer = readVersion('../bridge/package.json')
@@ -88,8 +103,8 @@ function rollback() {
 try {
   run('pnpm', ['--filter', 'laycode-cli', 'build'])
 
-  // 发布前确认：这是唯一不可逆的一步，让用户最终拍板。
-  const ok = await confirm(`\n即将发布 laycode-cli@${newVer} 到 ${NPM_REGISTRY}\n确认发布？(y/N) `)
+  // 发布前最终确认：这是唯一不可逆的一步。
+  const ok = await confirm(`\n构建完成，即将发布 laycode-cli@${newVer} 到 ${NPM_REGISTRY}\n确认发布？(y/N) `)
   if (!ok) {
     console.error('已取消发布。')
     rollback()

@@ -57,6 +57,12 @@ if (git(['status', '--porcelain'])) {
   process.exit(1)
 }
 
+console.log('\n──────── 升级 App 版本号 ────────')
+console.log(`  当前版本：${pkgVer}`)
+console.log(`  升级类型：${bump}`)
+console.log(`  目标版本：${newVer}`)
+console.log('──────────────────────────────────')
+
 // 同步写两处版本号，保留原缩进（2 空格）。
 pkg.version = newVer
 writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
