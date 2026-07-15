@@ -1,7 +1,13 @@
 name: Build & Release (Android)
 
-# 手动触发：在 Actions 页面点 "Run workflow"，或用 gh CLI / pnpm 脚本触发。
+# 触发方式：
+#   1) 推送 app-v* tag（由 `pnpm version:app` 创建）→ 自动用 production-apk 构建并发 Release。
+#   2) 手动 workflow_dispatch → 可选 profile / notes，用于单独出 aab、preview 等。
+# tag 只有一个来源：本地 `pnpm version:app`。workflow 不再自行创建版本 tag。
 on:
+  push:
+    tags:
+      - 'app-v*'
   workflow_dispatch:
     inputs:
       profile:
@@ -46,25 +52,37 @@ jobs:
         working-directory: app
         run: npm install
 
-      # 读取 app/app.json 的 version，拼出 tag：app-v<version>
+      # tag 触发：直接用推送的 tag（github.ref_name，如 app-v1.1.0）。
+      # 手动触发：用 app/app.json 的 version 拼出 app-v<version>。
       - name: Resolve version
         id: ver
         run: |
-          VERSION=$(node -p "require('./app/app.json').expo.version")
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+            VERSION="${TAG#app-v}"
+          else
+            VERSION=$(node -p "require('./app/app.json').expo.version")
+            TAG="app-v$VERSION"
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=app-v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # profile：手动触发用所选值；tag 触发默认 production-apk。
+      - name: Resolve profile
+        id: prof
+        run: echo "profile=${{ inputs.profile || 'production-apk' }}" >> "$GITHUB_OUTPUT"
 
       # 云端构建并等待完成，拿到产物下载地址
       - name: EAS build
         id: build
         working-directory: app
         run: |
-          URL=$(eas build --platform android --profile "${{ inputs.profile }}" --non-interactive --wait --json | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const a=JSON.parse(d);console.log(a[0].artifacts.buildUrl)})")
+          URL=$(eas build --platform android --profile "${{ steps.prof.outputs.profile }}" --non-interactive --wait --json | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const a=JSON.parse(d);console.log(a[0].artifacts.buildUrl)})")
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
       - name: Download artifact
         run: |
-          curl -L -o "laycode-${{ steps.ver.outputs.version }}.${{ inputs.profile == 'production-aab' && 'aab' || 'apk' }}" "${{ steps.build.outputs.url }}"
+          curl -L -o "laycode-${{ steps.ver.outputs.version }}.${{ steps.prof.outputs.profile == 'production-aab' && 'aab' || 'apk' }}" "${{ steps.build.outputs.url }}"
 
       # 创建/更新 Release 并上传产物。notes 为空时用 GitHub 自动生成的提交摘要。
       - name: Create Release
