@@ -167,17 +167,19 @@ laycode/
 | 命令 | 说明 |
 |---|---|
 | `pnpm release:bridge <patch\|minor\|major> [--dry-run]` | **Bridge 发版**：升级 `laycode-cli` 版本 → 构建 → 发布到 npm → 提交并打 tag `v*`；失败自动回滚 |
-| `pnpm version:app <patch\|minor\|major> [--dry-run]` | **App 升版本号**：同步改 `app/package.json` 与 `app/app.json` → 提交并打 tag `app-v*`。只改版本号，不发布（产物走 EAS build，build number 由 EAS 管理） |
+| `pnpm release:app <patch\|minor\|major> [--dry-run]` | **App 发版**：升级 `app/package.json` 与 `app/app.json` → 提交并打 tag `app-v*`。**推送该 tag 后 GitHub Actions 自动构建并发布 Release**（默认 production-apk） |
 
-> 说明：Bridge 发到 npm，所以 `release:bridge` 是真正的「发版」（含发布）。App 不发 npm，产物由 EAS 构建，所以只有「升版本号」这一步，命名为 `version:app` 以示区别。
+> App 发版流程：`pnpm release:app minor` → `git push && git push --tags` → CI 自动构建发布。App build number 由 EAS 管理。
 
-App 产物的构建（CI，触发 GitHub Actions）：
+需要手动出别的产物（如 AAB、preview），可单独触发 CI（构建**远程 `main` 分支**的代码，非本地未推送的改动）：
 
 | 命令 | 说明 |
 |---|---|
-| `pnpm release:apk` | 构建生产 APK |
-| `pnpm release:aab` | 构建生产 AAB |
-| `pnpm release:preview` | 构建 preview 包 |
+| `pnpm release:apk` | 手动触发构建生产 APK（main 分支） |
+| `pnpm release:aab` | 手动触发构建生产 AAB（main 分支） |
+| `pnpm release:preview` | 手动触发构建 preview apk 包（main 分支） |
+
+> 构建其它分支：`gh workflow run build-release.yml --ref <branch> -f profile=<profile>`。
 
 ## 🛠️ Tech Stack
 
