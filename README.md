@@ -19,7 +19,7 @@ LayCode 是 [opencode](https://github.com/sst/opencode) 的移动端 companion a
 ┌─────────────┐     WiFi      ┌──────────────────┐     ┌─────────────┐
 │             │               │                  │     │             │
 │  LayCode    │ ◄───────────► │  LayCode Bridge  │ ◄──►│  opencode   │
-│  (App)      │    HTTP/WS    │  (Express)       │     │  (TUI)      │
+│  (App)      │    HTTP/WS    │  (Express)       │     │             │
 │             │               │                  │     │             │
 └─────────────┘               └──────────────────┘     └─────────────┘
    iOS/Android                     macOS/Linux           本地运行
@@ -27,14 +27,13 @@ LayCode 是 [opencode](https://github.com/sst/opencode) 的移动端 companion a
 
 - **LayCode App** — Expo React Native 应用，运行在手机上
 - **LayCode Bridge** — Node.js Express 服务，运行在你的电脑上，代理 opencode API 和 WebSocket
-- **opencode** — 本地运行的 opencode TUI 实例，Bridge 通过 SDK 与之交互
+- **opencode** — 本地运行的 opencode 实例，Bridge 通过 SDK 与之交互
 
 ## 📋 Prerequisites
 
 ### Bridge 端（电脑）
 - Node.js >= 18
 - npm 或 yarn
-- [opencode](https://github.com/sst/opencode) 已安装并可在命令行调用
 - 与手机在同一局域网内
 - 支持 macOS、Linux、Windows
 
