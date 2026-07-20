@@ -1,6 +1,7 @@
 import { createOpencodeClient as createV1Client } from '@opencode-ai/sdk/client'
 import { createOpencodeClient as createV2Client } from '@opencode-ai/sdk/v2/client'
 import type { Session } from '@opencode-ai/sdk'
+import type { GlobalSession } from '@opencode-ai/sdk/v2'
 import type { ServerConfig, Provider, ModelInfo, Agent, PermissionRequest, QuestionRequest, Todo, GitStatus } from '../types'
 
 export interface BrowseEntry {
@@ -274,6 +275,60 @@ export class LayCodeClient {
   async listSessionsByDirectory(directory: string): Promise<Session[]> {
     const data = await this.unwrap(this.client.session.list({ query: { directory } }), true)
     return (data as any) || []
+  }
+
+  // 各会话运行状态，来自官方 SDK 的 GET /session/status（批量：一目录一请求，返回 { [sessionID]: status }）。
+  // SessionStatus 三态：idle / retry / busy。busy = 正在跑。返回 busy 会话的 ID 集合。
+  // soft=true：拿不到（旧 bridge 无此接口等）返回空集合，不影响其它数据。
+  async getRunningSessionIds(directory: string): Promise<Set<string>> {
+    const data = await this.unwrap(this.client.session.status({ query: { directory } }), true)
+    const map = (data as any) || {}
+    const ids = new Set<string>()
+    for (const [id, st] of Object.entries(map)) {
+      if (st && (st as any).type === 'busy') ids.add(id)
+    }
+    return ids
+  }
+
+  // ---- 首页用的跨项目会话拉取 ----
+
+  // 全局最近会话，跨所有项目、已按 time.updated 降序（服务端排序）。
+  // 走 v2 experimental：GET /experimental/session。这是官方唯一的跨项目出口——
+  // v1 的 /session 不带 directory 只返回单个当前项目，逐目录枚举又漏掉非 git / 非标准命名的目录
+  // （如中文名目录 code/测试）。experimental.session.list 连这些都覆盖，且自带完整字段。
+  // 每条是 GlobalSession：自带 directory/title/agent/model/summary/time。soft：失败返回空数组。
+  // 注意：/experimental 前缀是官方实验性接口，签名/路径未来可能变动——隔离在此一处，便于将来收敛。
+  async listRecentSessions(limit = 10): Promise<GlobalSession[]> {
+    const data = await this.unwrap(this.v2.experimental.session.list({ limit }), true)
+    return (data as any) || []
+  }
+
+  // 会话最后一条消息的正文（截断用），跳过 reasoning/思考，只取 text part。
+  // 优先取最近一条有正文的 assistant 消息；若 AI 最后没有正文（如工具调用被拒、只有工具操作），
+  // 回退到最近一条 user 消息，避免卡片显示空白。返回来源标记，供 UI 区分「你：」前缀。
+  async getLastMessageText(sessionId: string): Promise<{ text: string; fromUser: boolean }> {
+    const res = await this.request(`/opencode-api/session/${encodeURIComponent(sessionId)}/message?limit=4`)
+    const rows: any[] = await res.json().catch(() => [])
+    if (!Array.isArray(rows)) return { text: '', fromUser: false }
+    const textOf = (row: any): string => {
+      const parts = row?.parts || []
+      return parts.filter((p: any) => p?.type === 'text').map((p: any) => p.text || '').join('').trim()
+    }
+    // 先找最近一条有正文的 assistant 消息
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const info = rows[i]?.info || rows[i]
+      if (info?.role !== 'assistant') continue
+      const text = textOf(rows[i])
+      if (text) return { text, fromUser: false }
+    }
+    // AI 无正文 → 回退最近一条 user 消息
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const info = rows[i]?.info || rows[i]
+      if (info?.role !== 'user') continue
+      const text = textOf(rows[i])
+      if (text) return { text, fromUser: true }
+    }
+    return { text: '', fromUser: false }
   }
 
   async createSessionInDirectory(directory: string, agent?: string): Promise<Session> {

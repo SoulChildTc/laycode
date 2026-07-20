@@ -12,6 +12,8 @@ interface Props {
   request: PermissionRequest
   theme: Theme
   onReply: (reply: PermissionReply, message?: string) => void
+  // 稍后处理：仅关闭弹层，不回复（审批保留 pending），让用户能返回其它会话/首页。
+  onDismiss: () => void
 }
 
 type Stage = 'prompt' | 'always' | 'reject'
@@ -71,10 +73,8 @@ function getBody(permission: string, metadata: Record<string, any>, patterns: st
     case 'task':
       return { heading: 'Description:', content: metadata.description || patternsFallback || '' }
     case 'external_directory':
-      if (metadata.command) {
-        return { heading: 'Command:', content: `$ ${metadata.command || ''}` }
-      }
-      return { heading: 'Directory:', content: metadata.directory || patternsFallback || '' }
+      // 真实 metadata 是 { filepath, parentDir }。显示本次要访问的具体文件（比只显示目录更能暴露风险）。
+      return { heading: '访问文件：', content: metadata.filepath || metadata.parentDir || patternsFallback || '' }
     case 'doom_loop':
       return { heading: '', content: 'Let the model try again after repeated failures.' }
     default:
@@ -82,7 +82,7 @@ function getBody(permission: string, metadata: Record<string, any>, patterns: st
   }
 }
 
-export default function PermissionPrompt({ request, theme, onReply }: Props) {
+export default function PermissionPrompt({ request, theme, onReply, onDismiss }: Props) {
   const [stage, setStage] = useState<Stage>('prompt')
   const [rejectMessage, setRejectMessage] = useState('')
   const slideAnim = useRef(new Animated.Value(0)).current
@@ -90,6 +90,9 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
   const icon = getIcon(request.permission)
   const title = getTitle(request.permission, request.metadata)
   const body = getBody(request.permission, request.metadata, request.patterns)
+  // 「总是允许」实际放行的范围（always 通配模式）。仅当它和本次详情不同才提示——避免冗余。
+  const alwaysScope = (request.always && request.always.length > 0) ? request.always.join(', ') : ''
+  const showScope = !!alwaysScope && !body.content.includes(alwaysScope)
 
   useEffect(() => {
     Animated.spring(slideAnim, {
@@ -107,6 +110,11 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
   }, [stage])
 
   const dismissKeyboard = () => Keyboard.dismiss()
+  // 点遮罩：prompt 阶段 = 稍后处理（关弹层，不回复）；always/reject 阶段 = 仅收键盘，避免误关。
+  const handleOverlayPress = () => {
+    if (stage === 'prompt') onDismiss()
+    else Keyboard.dismiss()
+  }
 
   const handleAllowOnce = () => onReply('once')
   const handleAllowAlways = () => setStage('always')
@@ -129,10 +137,10 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
   const slideIn = { transform: [{ translateY: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [100, 0] }) }] }
 
   return (
-    <Modal visible transparent animationType="none" onRequestClose={handleRejectCancel}>
+    <Modal visible transparent animationType="none" onRequestClose={() => stage === 'prompt' ? onDismiss() : setStage('prompt')}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.overlay}>
-          <TouchableWithoutFeedback onPress={dismissKeyboard}>
+          <TouchableWithoutFeedback onPress={handleOverlayPress}>
             <View style={styles.overlayTouchable} />
           </TouchableWithoutFeedback>
           <Animated.View style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.border }, slideIn]}>
@@ -146,6 +154,9 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
                   <Text style={[styles.sheetToolName, { color: theme.textTertiary }]}>{request.permission}</Text>
                   <Text style={[styles.sheetTitle, { color: theme.text }]} numberOfLines={2}>{title}</Text>
                 </View>
+                <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} activeOpacity={0.7}>
+                  <Text style={[styles.laterText, { color: theme.textTertiary }]}>稍后处理</Text>
+                </TouchableOpacity>
               </View>
 
               <View style={[styles.bodyBox, { backgroundColor: theme.codeBg, borderColor: theme.borderLight }]}>
@@ -157,33 +168,39 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
                 </ScrollView>
               </View>
 
-              <View style={styles.buttonRow}>
+              {showScope && (
+                <Text style={[styles.scopeHint, { color: theme.textTertiary }]}>
+                  点「总是允许」将放行 <Text style={{ color: theme.warning, fontWeight: '700' }}>{alwaysScope}</Text>
+                </Text>
+              )}
+
+              <View style={[styles.buttonRow, styles.promptButtonRow]}>
                 <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
+                  style={[styles.actionBtn, styles.actionBtnGrow, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
                   onPress={handleReject}
                   activeOpacity={0.7}
                 >
                   <Feather name="x" size={14} color={theme.error} />
-                  <Text style={[styles.actionBtnText, { color: theme.error }]}>Reject</Text>
+                  <Text style={[styles.actionBtnText, { color: theme.error }]}>拒绝</Text>
                 </TouchableOpacity>
-                {request.always.length > 0 && (
-                  <TouchableOpacity
-                    style={[styles.actionBtn, styles.actionBtnSecondary, { borderColor: theme.border }]}
-                    onPress={handleAllowAlways}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name="check-circle" size={14} color={theme.accent} />
-                    <Text style={[styles.actionBtnText, { color: theme.accent }]}>Allow always</Text>
-                  </TouchableOpacity>
-                )}
                 <TouchableOpacity
-                  style={[styles.actionBtn, styles.actionBtnPrimary, { backgroundColor: theme.accent }]}
+                  style={[styles.actionBtn, styles.actionBtnGrow, styles.actionBtnPrimary, { backgroundColor: theme.accent }]}
                   onPress={handleAllowOnce}
                   activeOpacity={0.7}
                 >
                   <Feather name="check" size={14} color="#fff" />
-                  <Text style={[styles.actionBtnText, styles.actionBtnPrimaryText]}>Allow once</Text>
+                  <Text style={[styles.actionBtnText, styles.actionBtnPrimaryText]}>允许一次</Text>
                 </TouchableOpacity>
+                {request.always.length > 0 && (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.actionBtnGrow, styles.actionBtnSecondary, { borderColor: theme.border }]}
+                    onPress={handleAllowAlways}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="check-circle" size={14} color={theme.accent} />
+                    <Text style={[styles.actionBtnText, { color: theme.accent }]}>总是允许</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </>
           )}
@@ -192,14 +209,14 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
             <>
               <View style={styles.sheetHeader}>
                 <Feather name="alert-triangle" size={18} color={theme.warning} />
-                <Text style={[styles.sheetTitle, { color: theme.text }]}>Allow always?</Text>
+                <Text style={[styles.sheetTitle, { color: theme.text }]}>总是允许？</Text>
               </View>
               <Text style={[styles.confirmText, { color: theme.textSecondary }]}>
-                This will allow {request.permission} until OpenCode is restarted.
+                之后同类的 {request.permission} 操作将不再询问，直到 OpenCode 重启。
               </Text>
               {request.always.length > 0 && request.always[0] !== '*' && (
                 <View style={[styles.patternsBox, { backgroundColor: theme.codeBg, borderColor: theme.borderLight }]}>
-                  <Text style={[styles.patternsLabel, { color: theme.textTertiary }]}>Patterns:</Text>
+                  <Text style={[styles.patternsLabel, { color: theme.textTertiary }]}>适用范围：</Text>
                   {request.always.map((pat, i) => (
                     <Text key={i} style={[styles.patternItem, { color: theme.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }]}>
                       {pat}
@@ -213,7 +230,7 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
                   onPress={handleAlwaysCancel}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Cancel</Text>
+                  <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>取消</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.actionBtnPrimary, { backgroundColor: theme.warning }]}
@@ -221,7 +238,7 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
                   activeOpacity={0.7}
                 >
                   <Feather name="check" size={14} color="#fff" />
-                  <Text style={[styles.actionBtnText, styles.actionBtnPrimaryText]}>Confirm</Text>
+                  <Text style={[styles.actionBtnText, styles.actionBtnPrimaryText]}>确认</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -231,7 +248,7 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
             <>
               <View style={styles.sheetHeader}>
                 <Feather name="x-circle" size={18} color={theme.error} />
-                <Text style={[styles.sheetTitle, { color: theme.text }]}>Reject permission</Text>
+                <Text style={[styles.sheetTitle, { color: theme.text }]}>拒绝授权</Text>
               </View>
               <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 260 }}>
                 <View style={[styles.rejectInputWrap, { backgroundColor: theme.codeBg, borderColor: theme.borderLight }]}>
@@ -240,7 +257,7 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
                     style={[styles.rejectInput, { color: theme.text }]}
                     value={rejectMessage}
                     onChangeText={setRejectMessage}
-                    placeholder="Tell OpenCode what to do differently..."
+                    placeholder="（可选）告诉它换个做法…"
                     placeholderTextColor={theme.textTertiary}
                     multiline
                     returnKeyType="default"
@@ -252,7 +269,7 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
                     onPress={handleRejectCancel}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Cancel</Text>
+                    <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>取消</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.actionBtn, styles.actionBtnPrimary, { backgroundColor: theme.error }]}
@@ -260,7 +277,7 @@ export default function PermissionPrompt({ request, theme, onReply }: Props) {
                     activeOpacity={0.7}
                   >
                     <Feather name="x" size={14} color="#fff" />
-                    <Text style={[styles.actionBtnText, styles.actionBtnPrimaryText]}>Reject</Text>
+                    <Text style={[styles.actionBtnText, styles.actionBtnPrimaryText]}>确认拒绝</Text>
                   </TouchableOpacity>
                 </View>
               </ScrollView>
@@ -301,6 +318,10 @@ const styles = StyleSheet.create({
   sheetHeaderText: {
     flex: 1,
   },
+  laterText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
   sheetToolName: {
     fontSize: 11,
     fontWeight: '600',
@@ -334,10 +355,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
+  scopeHint: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
   buttonRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 8,
+  },
+  // prompt 页三键铺满整行，与首页卡片按钮一致
+  promptButtonRow: {
+    justifyContent: 'space-between',
+  },
+  actionBtnGrow: {
+    flex: 1,
+    justifyContent: 'center',
   },
   rejectButtonRow: {
     marginTop: 12,

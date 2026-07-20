@@ -15,9 +15,11 @@ interface Props {
   theme: Theme
   onReply: (answers: string[][]) => void
   onReject: () => void
+  // 稍后处理：仅关闭弹层，不回复（问题保留 pending），让用户能返回其它会话/首页。
+  onDismiss: () => void
 }
 
-export default function QuestionPrompt({ request, theme, onReply, onReject }: Props) {
+export default function QuestionPrompt({ request, theme, onReply, onReject, onDismiss }: Props) {
   const [currentIdx, setCurrentIdx] = useState(0)
   const [selections, setSelections] = useState<string[][]>(() => request.questions.map(() => []))
   const [customInputs, setCustomInputs] = useState<string[]>(() => request.questions.map(() => ''))
@@ -118,12 +120,14 @@ export default function QuestionPrompt({ request, theme, onReply, onReject }: Pr
   }
 
   const dismissKeyboard = () => Keyboard.dismiss()
+  // 点遮罩 = 稍后处理：先收键盘再关闭弹层。
+  const handleOverlayPress = () => { Keyboard.dismiss(); onDismiss() }
 
   return (
-    <Modal visible transparent animationType="none" onRequestClose={onReject}>
+    <Modal visible transparent animationType="none" onRequestClose={onDismiss}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.overlay}>
-        <TouchableWithoutFeedback onPress={dismissKeyboard}>
+        <TouchableWithoutFeedback onPress={handleOverlayPress}>
           <View style={styles.overlayTouchable} />
         </TouchableWithoutFeedback>
         <Animated.View style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.border }, slideIn]}>
@@ -133,12 +137,15 @@ export default function QuestionPrompt({ request, theme, onReply, onReject }: Pr
             </View>
             <View style={styles.sheetHeaderText}>
               <Text style={[styles.stepLabel, { color: theme.textTertiary }]}>
-                Question {currentIdx + 1} of {request.questions.length}
+                问题 {currentIdx + 1} / {request.questions.length}
               </Text>
               <Text style={[styles.questionHeader, { color: theme.text }]}>
                 {question.header}
               </Text>
             </View>
+            <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} activeOpacity={0.7}>
+              <Text style={[styles.laterText, { color: theme.textTertiary }]}>稍后处理</Text>
+            </TouchableOpacity>
           </View>
 
           <Text style={[styles.questionText, { color: theme.textSecondary }]}>
@@ -235,11 +242,12 @@ export default function QuestionPrompt({ request, theme, onReply, onReject }: Pr
                 activeOpacity={0.7}
               >
                 <Feather name="x" size={14} color={theme.textSecondary} />
-                <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Skip</Text>
+                <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>跳过</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
                   styles.actionBtn,
+                  styles.actionBtnGrow,
                   styles.actionBtnPrimary,
                   { backgroundColor: canProceed ? theme.accent : theme.surfaceSecondary, opacity: canProceed ? 1 : 0.5 },
                 ]}
@@ -249,7 +257,7 @@ export default function QuestionPrompt({ request, theme, onReply, onReject }: Pr
               >
                 <Feather name="check" size={14} color="#fff" />
                 <Text style={[styles.actionBtnText, styles.actionBtnPrimaryText]}>
-                  {isLast ? 'Submit' : 'Next'}
+                  {isLast ? '提交' : '下一步'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -285,6 +293,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   sheetHeaderText: { flex: 1 },
+  laterText: { fontSize: 13, fontWeight: '600' },
   stepLabel: {
     fontSize: 11,
     fontWeight: '600',
@@ -357,7 +366,6 @@ const styles = StyleSheet.create({
   },
   buttonRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
     gap: 8,
   },
   actionBtn: {
@@ -370,6 +378,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   actionBtnPrimary: { borderWidth: 0 },
+  actionBtnGrow: { flex: 1, justifyContent: 'center' },
   actionBtnText: { fontSize: 14, fontWeight: '600' },
   actionBtnPrimaryText: { color: '#fff' },
 })

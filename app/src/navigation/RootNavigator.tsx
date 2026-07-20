@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import ConnectScreen from '../screens/ConnectScreen'
+import FeedScreen from '../screens/FeedScreen'
 import HomeScreen from '../screens/HomeScreen'
 import BrowseWorkspaceScreen from '../screens/BrowseWorkspaceScreen'
 import WorkspaceScreen from '../screens/WorkspaceScreen'
@@ -35,6 +36,7 @@ export type RootStackParamList = {
 }
 
 export type TabParamList = {
+  Feed: undefined
   Home: undefined
   Todos: undefined
   // Files: undefined  // 文件浏览暂未开放
@@ -66,7 +68,10 @@ function MainTabs({ themeMode, client, config, navigation: stackNav, onThemeTogg
         tabBarLabelStyle: { fontSize: 11 },
       }}
     >
-      <Tab.Screen name="Home" options={{ tabBarIcon: ({ color, size }) => <Feather name="home" size={size} color={color} /> }}>
+      <Tab.Screen name="Feed" options={{ title: '首页', tabBarIcon: ({ color, size }) => <Feather name="inbox" size={size} color={color} /> }}>
+        {() => <FeedScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
+      </Tab.Screen>
+      <Tab.Screen name="Home" options={{ title: '项目', tabBarIcon: ({ color, size }) => <Feather name="folder" size={size} color={color} /> }}>
         {() => <HomeScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
       </Tab.Screen>
       <Tab.Screen name="Todos" options={{ tabBarIcon: ({ color, size }) => <Feather name="check-square" size={size} color={color} /> }}>

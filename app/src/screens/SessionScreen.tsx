@@ -332,17 +332,18 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
         } catch {}
       }).catch(() => {})
 
-      // Pending permissions & questions (need dir)
+      // Pending permissions & questions (need dir)。listPending* 返回的是整个目录下
+      // 所有会话的待办，必须按 sessionID 过滤出当前会话的，否则会弹出同目录其它会话的审批/提问。
       if (dir) {
         const [reqs, qs] = await Promise.all([
           client.listPendingPermissions(dir).catch(() => []),
           client.listPendingQuestions(dir).catch(() => []),
         ])
-        if (reqs.length > 0) {
-          for (const r of reqs) dispatch({ type: 'permission/asked', request: r })
+        for (const r of reqs) {
+          if (r.sessionID === sessionId) dispatch({ type: 'permission/asked', request: r })
         }
-        if (qs.length > 0) {
-          for (const q of qs) dispatch({ type: 'question/asked', request: q })
+        for (const q of qs) {
+          if (q.sessionID === sessionId) dispatch({ type: 'question/asked', request: q })
         }
       }
     } catch (e: any) {
@@ -604,7 +605,8 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
           if (evType === 'permission.asked') {
               const req = props as PermissionRequest
-              dispatch({ type: 'permission/asked', request: req })
+              // 只处理当前会话的审批，忽略同目录其它会话的事件。
+              if (req.sessionID === sessionId) dispatch({ type: 'permission/asked', request: req })
               continue
             }
 
@@ -619,7 +621,8 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
 
             if (evType === 'question.asked') {
               const req = props as QuestionRequest
-              dispatch({ type: 'question/asked', request: req })
+              // 只处理当前会话的提问，忽略同目录其它会话的事件。
+              if (req.sessionID === sessionId) dispatch({ type: 'question/asked', request: req })
               continue
             }
 
@@ -1150,6 +1153,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           request={pendingPermissions[0]}
           theme={theme}
           onReply={handlePermissionReply}
+          onDismiss={() => dispatch({ type: 'permission/removed', id: pendingPermissions[0].id })}
         />
       )}
 
@@ -1159,6 +1163,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
           theme={theme}
           onReply={handleQuestionReply}
           onReject={handleQuestionReject}
+          onDismiss={() => dispatch({ type: 'question/removed', id: pendingQuestions[0].id })}
         />
       )}
 
