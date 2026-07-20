@@ -81,7 +81,7 @@ export default function SessionListScreen({ route, navigation, client, themeMode
         if (raw) savedAgent = raw
       } catch {}
       const session = await client.createSessionInDirectory(directory, savedAgent)
-      navigation.replace('Session', { projectId: session.id, sessionId: session.id, agents: JSON.stringify(agents), defaultAgent: savedAgent })
+      navigation.replace('Session', { sessionId: session.id, agents: JSON.stringify(agents), defaultAgent: savedAgent })
     } catch {}
     setCreating(false)
   }
@@ -138,7 +138,6 @@ export default function SessionListScreen({ route, navigation, client, themeMode
       toggleSelection(item.id)
     } else {
       navigation.navigate('Session', {
-        projectId: item.id,
         sessionId: item.id,
         title: item.title || item.id.slice(0, 8),
         agents: JSON.stringify(agents),
@@ -176,7 +175,7 @@ export default function SessionListScreen({ route, navigation, client, themeMode
     return (
       <Animated.View style={[styles.swipeActions, { transform: [{ scale }] }]}>
         <TouchableOpacity
-          style={styles.renameBtn}
+          style={[styles.renameBtn, { backgroundColor: theme.accent }]}
           onPress={() => {
             openSwipeRef.current?.close()
             setRenamingSession(item)
@@ -187,7 +186,7 @@ export default function SessionListScreen({ route, navigation, client, themeMode
           <Text style={styles.swipeBtnText}>重命名</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.copyBtn}
+          style={[styles.copyBtn, { backgroundColor: theme.accentLight }]}
           onPress={() => {
             openSwipeRef.current?.close()
             handleCopyTitle(item.title || item.id.slice(0, 8))
@@ -197,7 +196,7 @@ export default function SessionListScreen({ route, navigation, client, themeMode
           <Text style={styles.swipeBtnText}>复制</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.deleteBtn}
+          style={[styles.deleteBtn, { backgroundColor: theme.error }]}
           onPress={() => {
             openSwipeRef.current?.close()
             handleDeleteSingle(item.id)
@@ -222,7 +221,7 @@ export default function SessionListScreen({ route, navigation, client, themeMode
             </TouchableOpacity>
             <Text style={[styles.headerTitle, { color: theme.text }]}>已选 {selectedCount} 项</Text>
             <TouchableOpacity onPress={handleDelete} disabled={selectedCount === 0} hitSlop={10}>
-              <Text style={[styles.action, { color: selectedCount > 0 ? '#ff3b30' : theme.textTertiary }]}>删除({selectedCount})</Text>
+              <Text style={[styles.action, { color: selectedCount > 0 ? theme.error : theme.textTertiary }]}>删除({selectedCount})</Text>
             </TouchableOpacity>
           </>
         ) : (
@@ -250,6 +249,7 @@ export default function SessionListScreen({ route, navigation, client, themeMode
         <FlatList
           data={sessions}
           keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingTop: 10, paddingBottom: 40 }}
           renderItem={({ item }) => {
             const isSelected = selecting && selectedIds.has(item.id)
             return (
@@ -267,20 +267,27 @@ export default function SessionListScreen({ route, navigation, client, themeMode
                 enabled={!selecting}
               >
                 <TouchableOpacity
-                  style={[styles.sessionItem, { borderBottomColor: theme.border }, isSelected && { backgroundColor: theme.surface }]}
+                  style={[styles.sessionItem, { backgroundColor: theme.surface, borderColor: theme.border }, isSelected && { borderColor: theme.accent, backgroundColor: theme.surfaceSecondary }]}
                   onPress={() => handlePress(item)}
                   onLongPress={() => handleLongPress(item)}
                   activeOpacity={0.7}
                 >
                   <View style={styles.sessionRow}>
-                    {selecting && (
-                      <View style={[styles.checkbox, isSelected && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
+                    {selecting ? (
+                      <View style={[styles.checkbox, { borderColor: theme.border }, isSelected && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
                         {isSelected && <Feather name="check" size={14} color="#fff" />}
+                      </View>
+                    ) : (
+                      <View style={[styles.sdot, { backgroundColor: iconColor(item.title || item.id) }]}>
+                        <Feather name="message-circle" size={13} color="#fff" />
                       </View>
                     )}
                     <Text style={[styles.sessionTitle, { color: theme.text }]} numberOfLines={1}>
                       {item.title || item.id.slice(0, 8)}
                     </Text>
+                    {!selecting && (
+                      <Text style={[styles.sessionTime, { color: theme.textTertiary }]}>{relTime(item.time?.updated || item.time?.created)}</Text>
+                    )}
                   </View>
                 </TouchableOpacity>
               </Swipeable>
@@ -338,6 +345,27 @@ export default function SessionListScreen({ route, navigation, client, themeMode
   )
 }
 
+const ICON_COLORS = ['#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#f43f5e']
+function iconColor(name: string): string {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return ICON_COLORS[h % ICON_COLORS.length]
+}
+function relTime(raw?: number): string {
+  if (!raw) return ''
+  const ms = raw < 1e12 ? raw * 1000 : raw
+  const diff = Date.now() - ms
+  const min = Math.floor(diff / 60000)
+  if (min < 1) return '刚刚'
+  if (min < 60) return `${min} 分钟前`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr} 小时前`
+  const day = Math.floor(hr / 24)
+  if (day === 1) return '昨天'
+  if (day < 7) return `${day} 天前`
+  return new Date(ms).toLocaleDateString()
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
@@ -353,29 +381,28 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: '600', flex: 1, textAlign: 'center' },
   pathBar: { paddingHorizontal: 16, paddingVertical: 10 },
   pathText: { fontSize: 12 },
-  sessionItem: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 },
-  sessionRow: { flexDirection: 'row', alignItems: 'center' },
-  sessionTitle: { fontSize: 15, flex: 1 },
-  checkbox: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#999', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  sessionItem: { paddingHorizontal: 13, paddingVertical: 13, marginHorizontal: 20, marginBottom: 9, borderRadius: 14, borderWidth: 1 },
+  sessionRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sdot: { width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
+  sessionTitle: { fontSize: 14.5, fontWeight: '600', flex: 1 },
+  sessionTime: { fontSize: 11, fontVariant: ['tabular-nums'] },
+  checkbox: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   swipeActions: {
     flexDirection: 'row',
-    borderRadius: 12,
+    borderRadius: 14,
     overflow: 'hidden',
   },
   renameBtn: {
-    backgroundColor: '#6c7dff',
     justifyContent: 'center',
     alignItems: 'center',
     width: 76,
   },
   copyBtn: {
-    backgroundColor: '#5856d6',
     justifyContent: 'center',
     alignItems: 'center',
     width: 76,
   },
   deleteBtn: {
-    backgroundColor: '#ff3b30',
     justifyContent: 'center',
     alignItems: 'center',
     width: 76,

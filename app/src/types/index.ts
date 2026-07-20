@@ -12,16 +12,8 @@ export interface ServerEntry {
   token: string
 }
 
-export interface Project {
-  id: string
-  name: string
-  directory: string
-  worktree?: string
-}
-
 export interface Session {
   id: string
-  projectId: string
   title?: string
   createdAt: string
   directory?: string

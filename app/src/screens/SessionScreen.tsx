@@ -441,12 +441,12 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     if (toolCall.name !== 'task') return
     const childId = toolCall.metadata?.sessionId
     if (childId) {
-      navigation.push('Session', { projectId: childId, sessionId: childId, agent: toolCall.input?.subagent_type, parentId: sessionId })
+      navigation.push('Session', { sessionId: childId, agent: toolCall.input?.subagent_type, parentId: sessionId })
       return
     }
     const outputMatch = typeof toolCall.output === 'string' ? toolCall.output.match(/<task id="([^"]+)"/) : null
     if (outputMatch) {
-      navigation.push('Session', { projectId: outputMatch[1], sessionId: outputMatch[1], agent: toolCall.input?.subagent_type, parentId: sessionId })
+      navigation.push('Session', { sessionId: outputMatch[1], agent: toolCall.input?.subagent_type, parentId: sessionId })
       return
     }
     if (cwd) {
@@ -477,7 +477,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     const idx = childSessions.findIndex((s) => s.id === sessionId)
     if (idx > 0) {
       const prev = childSessions[idx - 1]
-      navigation.replace('Session', { projectId: prev.id, sessionId: prev.id, parentId: parentID, agent: prev.agent })
+      navigation.replace('Session', { sessionId: prev.id, parentId: parentID, agent: prev.agent })
     }
   }, [parentID, sessionId, childSessions, navigation])
 
@@ -486,7 +486,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
     const idx = childSessions.findIndex((s) => s.id === sessionId)
     if (idx < childSessions.length - 1) {
       const next = childSessions[idx + 1]
-      navigation.replace('Session', { projectId: next.id, sessionId: next.id, parentId: parentID, agent: next.agent })
+      navigation.replace('Session', { sessionId: next.id, parentId: parentID, agent: next.agent })
     }
   }, [parentID, sessionId, childSessions, navigation])
 
@@ -1253,7 +1253,7 @@ export default function SessionScreen({ route, navigation, themeMode, client, co
                     style={[styles.childSessionItem, { borderBottomColor: theme.border }]}
                     onPress={() => {
                       setShowChildSessions(false)
-                      navigation.push('Session', { projectId: item.id, sessionId: item.id, agent: item.agent, parentId: sessionId })
+                      navigation.push('Session', { sessionId: item.id, agent: item.agent, parentId: sessionId })
                     }}
                   >
                     <Text style={styles.childSessionIcon}>🤖</Text>

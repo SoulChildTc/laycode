@@ -30,7 +30,7 @@ type Kind = 'attention' | 'running' | 'recent'
 interface Item {
   sessionId: string
   directory: string
-  projectName: string
+  dirName: string
   title: string
   kind: Kind
   updated: number
@@ -138,13 +138,13 @@ export default function FeedScreen({ navigation, client, themeMode, config }: Pr
       const running = new Set<string>()
       for (const set of runningSets) for (const id of set) running.add(id)
 
-      const projName = (s: any) => nameByDir[s.directory] || (s.directory || '').split('/').filter(Boolean).pop() || '项目'
+      const dirName = (s: any) => nameByDir[s.directory] || (s.directory || '').split('/').filter(Boolean).pop() || '工作区'
       const updatedOf = (s: any) => {
         const t = s.time?.updated || s.time?.created || 0
         return t < 1e12 ? t * 1000 : t
       }
       const baseItem = (s: any, kind: Kind): Item => ({
-        sessionId: s.id, directory: s.directory, projectName: projName(s),
+        sessionId: s.id, directory: s.directory, dirName: dirName(s),
         title: s.title || s.id.slice(0, 8), kind, updated: updatedOf(s),
         additions: s.summary?.additions || 0, deletions: s.summary?.deletions || 0,
       })
@@ -215,7 +215,7 @@ export default function FeedScreen({ navigation, client, themeMode, config }: Pr
   }
 
   const openConv = (it: Item) =>
-    navigation.navigate('Session', { projectId: it.sessionId, sessionId: it.sessionId, title: it.title })
+    navigation.navigate('Session', { sessionId: it.sessionId, title: it.title })
 
   // 让正在跑的会话停下：abort 后从「正在跑」组里移除（乐观更新），随后 reload 拿真实分组（通常落到「最近」）。
   const stopRunning = async (it: Item) => {
@@ -299,7 +299,7 @@ export default function FeedScreen({ navigation, client, themeMode, config }: Pr
                   <Feather name="check" size={26} color={theme.success} />
                 </View>
                 <Text style={[styles.emptyText, { color: theme.text }]}>今天没有需要处理的事</Text>
-                <Text style={[styles.emptyHint, { color: theme.textSecondary }]}>去「项目」里开始新对话</Text>
+                <Text style={[styles.emptyHint, { color: theme.textSecondary }]}>去「工作区」里开始新对话</Text>
               </View>
             )
           }
@@ -355,10 +355,10 @@ export default function FeedScreen({ navigation, client, themeMode, config }: Pr
   function ProjRow({ it, showTitle }: { it: Item; showTitle?: boolean }) {
     return (
       <View style={styles.row1}>
-        <View style={[styles.pdot, { backgroundColor: iconColor(it.projectName) }]}>
-          <Text style={styles.pdotText}>{it.projectName.charAt(0).toUpperCase()}</Text>
+        <View style={[styles.pdot, { backgroundColor: iconColor(it.dirName) }]}>
+          <Text style={styles.pdotText}>{it.dirName.charAt(0).toUpperCase()}</Text>
         </View>
-        <Text style={[styles.proj, !showTitle && { flex: 1 }, { color: theme.textTertiary }]} numberOfLines={1}>{it.projectName}</Text>
+        <Text style={[styles.proj, !showTitle && { flex: 1 }, { color: theme.textTertiary }]} numberOfLines={1}>{it.dirName}</Text>
         {showTitle && (
           <>
             <Text style={[styles.projSep, { color: theme.textTertiary }]}>·</Text>

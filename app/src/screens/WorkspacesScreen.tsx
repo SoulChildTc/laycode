@@ -29,7 +29,7 @@ interface Props {
   config: ServerEntry
 }
 
-export default function ProjectsScreen({ navigation, client, themeMode, config }: Props) {
+export default function WorkspacesScreen({ navigation, client, themeMode, config }: Props) {
   const theme = getTheme(themeMode)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
@@ -162,7 +162,7 @@ export default function ProjectsScreen({ navigation, client, themeMode, config }
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text }]}>项目</Text>
+        <Text style={[styles.title, { color: theme.text }]}>工作区</Text>
         {connState !== 'online' && (
           <View style={styles.status}>
             <View style={[styles.statusDot, { backgroundColor: statusColor(theme, connState) }]} />

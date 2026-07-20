@@ -5,7 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import ConnectScreen from '../screens/ConnectScreen'
 import FeedScreen from '../screens/FeedScreen'
-import ProjectsScreen from '../screens/ProjectsScreen'
+import WorkspacesScreen from '../screens/WorkspacesScreen'
 import BrowseWorkspaceScreen from '../screens/BrowseWorkspaceScreen'
 import SessionListScreen from '../screens/SessionListScreen'
 import SessionScreen from '../screens/SessionScreen'
@@ -27,7 +27,7 @@ export type RootStackParamList = {
   Main: undefined
   BrowseWorkspace: undefined
   SessionList: { directory: string; name: string }
-  Session: { projectId: string; sessionId: string }
+  Session: { sessionId: string }
   Git: { directory: string }
   Diff: { directory: string; file: string; cached?: boolean }
   Terminal: { directory?: string; ptyID?: string }
@@ -71,8 +71,8 @@ function MainTabs({ themeMode, client, config, navigation: stackNav, onThemeTogg
       <Tab.Screen name="Feed" options={{ title: '首页', tabBarIcon: ({ color, size }) => <Feather name="inbox" size={size} color={color} /> }}>
         {() => <FeedScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
       </Tab.Screen>
-      <Tab.Screen name="Home" options={{ title: '项目', tabBarIcon: ({ color, size }) => <Feather name="folder" size={size} color={color} /> }}>
-        {() => <ProjectsScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
+      <Tab.Screen name="Home" options={{ title: '工作区', tabBarIcon: ({ color, size }) => <Feather name="folder" size={size} color={color} /> }}>
+        {() => <WorkspacesScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
       </Tab.Screen>
       <Tab.Screen name="Todos" options={{ tabBarIcon: ({ color, size }) => <Feather name="check-square" size={size} color={color} /> }}>
         {() => <TodoSummaryScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
