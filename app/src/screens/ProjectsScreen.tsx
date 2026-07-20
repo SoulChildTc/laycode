@@ -29,7 +29,7 @@ interface Props {
   config: ServerEntry
 }
 
-export default function HomeScreen({ navigation, client, themeMode, config }: Props) {
+export default function ProjectsScreen({ navigation, client, themeMode, config }: Props) {
   const theme = getTheme(themeMode)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
@@ -136,7 +136,7 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
     return (
       <Animated.View style={[styles.swipeActions, { transform: [{ scale }] }]}>
         <TouchableOpacity
-          style={styles.editBtn}
+          style={[styles.editBtn, { backgroundColor: theme.accent }]}
           onPress={() => {
             openSwipeRef.current?.close()
             openAliasEdit(ws)
@@ -146,7 +146,7 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
           <Text style={styles.swipeBtnText}>编辑</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.deleteBtn}
+          style={[styles.deleteBtn, { backgroundColor: theme.error }]}
           onPress={() => {
             openSwipeRef.current?.close()
             removeWorkspace(ws.path)
@@ -162,11 +162,13 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text }]}>LayCode</Text>
-        <View style={styles.status}>
-          <View style={[styles.statusDot, { backgroundColor: statusColor(theme, connState) }]} />
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{statusLabel(connState)}</Text>
-        </View>
+        <Text style={[styles.title, { color: theme.text }]}>项目</Text>
+        {connState !== 'online' && (
+          <View style={styles.status}>
+            <View style={[styles.statusDot, { backgroundColor: statusColor(theme, connState) }]} />
+            <Text style={[styles.subtitle, { color: statusColor(theme, connState) }]}>{statusLabel(connState)}</Text>
+          </View>
+        )}
       </View>
 
       <FlatList
@@ -188,27 +190,36 @@ export default function HomeScreen({ navigation, client, themeMode, config }: Pr
             >
               <TouchableOpacity
                 style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}
-                onPress={() => navigation.navigate('Workspace', { directory: item.path, name: displayName(item) })}
+                onPress={() => navigation.navigate('SessionList', { directory: item.path, name: displayName(item) })}
                 onLongPress={() => setActionWs(item)}
                 delayLongPress={300}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.cardName, { color: theme.text }]}>{displayName(item)}</Text>
-                {item.alias && (
-                  <Text style={[styles.cardOriginalName, { color: theme.textTertiary }]}>{item.name}</Text>
-                )}
-                <Text style={[styles.cardPath, { color: theme.textSecondary }]}>{item.path}</Text>
-                <Text style={[styles.cardMeta, { color: theme.textSecondary }]}>
-                  {counts[item.path] ?? '-'} 个会话
-                </Text>
+                <View style={styles.cardHead}>
+                  <View style={[styles.pdot, { backgroundColor: iconColor(displayName(item)) }]}>
+                    <Text style={styles.pdotText}>{displayName(item).charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <View style={styles.cardHeadText}>
+                    <Text style={[styles.cardName, { color: theme.text }]} numberOfLines={1}>{displayName(item)}</Text>
+                    {item.alias && (
+                      <Text style={[styles.cardOriginalName, { color: theme.textTertiary }]} numberOfLines={1}>{item.name}</Text>
+                    )}
+                  </View>
+                  <Text style={[styles.cardMeta, { color: theme.textTertiary }]}>
+                    {counts[item.path] ?? '-'} 个会话
+                  </Text>
+                </View>
+                <Text style={[styles.cardPath, { color: theme.textSecondary }]} numberOfLines={1}>{item.path}</Text>
               </TouchableOpacity>
             </Swipeable>
           </View>
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>📂</Text>
-            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>还没有添加工作区</Text>
+            <View style={[styles.emptyIconWrap, { backgroundColor: withAlpha(theme.accent, 0.12) }]}>
+              <Feather name="folder-plus" size={26} color={theme.accent} />
+            </View>
+            <Text style={[styles.emptyText, { color: theme.text }]}>还没有添加工作区</Text>
             <Text style={[styles.emptyHint, { color: theme.textSecondary }]}>
               点击下方按钮选择电脑上的项目目录
             </Text>
@@ -282,6 +293,19 @@ function statusColor(theme: any, state: ConnState): string {
   return theme.success
 }
 
+const ICON_COLORS = ['#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#f43f5e']
+function iconColor(name: string): string {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return ICON_COLORS[h % ICON_COLORS.length]
+}
+function withAlpha(hex: string, a: number): string {
+  const h = (hex || '').replace('#', '')
+  if (h.length !== 6) return hex
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16)
+  return `rgba(${r},${g},${b},${a})`
+}
+
 function SheetItem({ icon, label, theme, onPress, disabled }: { icon: any; label: string; theme: any; onPress: () => void; disabled?: boolean }) {
   return (
     <TouchableOpacity
@@ -308,25 +332,27 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13 },
   status: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  cardWrapper: { marginHorizontal: 16, marginBottom: 12 },
-  card: { borderRadius: 12, padding: 16, borderWidth: 1 },
-  cardName: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
-  cardOriginalName: { fontSize: 12, marginBottom: 2 },
-  cardPath: { fontSize: 12, marginBottom: 4 },
-  cardMeta: { fontSize: 12 },
+  cardWrapper: { marginHorizontal: 20, marginBottom: 9 },
+  card: { borderRadius: 14, padding: 13, borderWidth: 1 },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  pdot: { width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
+  pdotText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  cardHeadText: { flex: 1 },
+  cardName: { fontSize: 15, fontWeight: '700' },
+  cardOriginalName: { fontSize: 11.5, marginTop: 1 },
+  cardPath: { fontSize: 12, marginTop: 9, fontVariant: ['tabular-nums'] },
+  cardMeta: { fontSize: 11.5, fontWeight: '600', fontVariant: ['tabular-nums'] },
   swipeActions: {
     flexDirection: 'row',
-    borderRadius: 12,
+    borderRadius: 14,
     overflow: 'hidden',
   },
   editBtn: {
-    backgroundColor: '#6c7dff',
     justifyContent: 'center',
     alignItems: 'center',
     width: 76,
   },
   deleteBtn: {
-    backgroundColor: '#ff3b30',
     justifyContent: 'center',
     alignItems: 'center',
     width: 76,
@@ -337,10 +363,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
-  empty: { alignItems: 'center', paddingTop: 40 },
-  emptyIcon: { fontSize: 40, marginBottom: 12 },
-  emptyText: { fontSize: 16, marginBottom: 4 },
-  emptyHint: { fontSize: 13, textAlign: 'center', paddingHorizontal: 40 },
+  empty: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 40 },
+  emptyIconWrap: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyText: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
+  emptyHint: { fontSize: 13, textAlign: 'center', lineHeight: 19 },
   emptyContainer: { flex: 1, justifyContent: 'center' },
   fab: {
     position: 'absolute', bottom: 24, right: 24,

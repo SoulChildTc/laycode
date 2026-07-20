@@ -5,9 +5,9 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import ConnectScreen from '../screens/ConnectScreen'
 import FeedScreen from '../screens/FeedScreen'
-import HomeScreen from '../screens/HomeScreen'
+import ProjectsScreen from '../screens/ProjectsScreen'
 import BrowseWorkspaceScreen from '../screens/BrowseWorkspaceScreen'
-import WorkspaceScreen from '../screens/WorkspaceScreen'
+import SessionListScreen from '../screens/SessionListScreen'
 import SessionScreen from '../screens/SessionScreen'
 // 文件浏览功能尚未开放，入口已屏蔽（见下方 MainTabs）
 // import FileExplorerScreen from '../screens/FileExplorerScreen'
@@ -26,7 +26,7 @@ export type RootStackParamList = {
   Connect: undefined
   Main: undefined
   BrowseWorkspace: undefined
-  Workspace: { directory: string; name: string }
+  SessionList: { directory: string; name: string }
   Session: { projectId: string; sessionId: string }
   Git: { directory: string }
   Diff: { directory: string; file: string; cached?: boolean }
@@ -72,7 +72,7 @@ function MainTabs({ themeMode, client, config, navigation: stackNav, onThemeTogg
         {() => <FeedScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
       </Tab.Screen>
       <Tab.Screen name="Home" options={{ title: '项目', tabBarIcon: ({ color, size }) => <Feather name="folder" size={size} color={color} /> }}>
-        {() => <HomeScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
+        {() => <ProjectsScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
       </Tab.Screen>
       <Tab.Screen name="Todos" options={{ tabBarIcon: ({ color, size }) => <Feather name="check-square" size={size} color={color} /> }}>
         {() => <TodoSummaryScreen navigation={stackNav} client={client!} themeMode={themeMode} config={config!} />}
@@ -130,8 +130,8 @@ export default function RootNavigator({ screenProps }: { screenProps: ScreenProp
         <Stack.Screen name="BrowseWorkspace">
           {(props) => <BrowseWorkspaceScreen {...props} client={client!} themeMode={themeMode} config={config!} />}
         </Stack.Screen>
-        <Stack.Screen name="Workspace">
-          {(props) => <WorkspaceScreen {...props} client={client!} themeMode={themeMode} config={config!} />}
+        <Stack.Screen name="SessionList">
+          {(props) => <SessionListScreen {...props} client={client!} themeMode={themeMode} config={config!} />}
         </Stack.Screen>
         <Stack.Screen name="Session">
           {(props) => <SessionScreen {...props} themeMode={themeMode} client={client!} config={config!} />}

@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
 import { Feather } from '@expo/vector-icons'
 import TerminalCard from '../components/TerminalCard'
-import { getKnownDirs, addKnownDir } from '../hooks/useTerminalStore'
+import { getKnownDirs, addKnownDir, removeKnownDir } from '../hooks/useTerminalStore'
 import { usePTYEvents } from '../hooks/usePTYEvents'
 import type { LayCodeClient } from '../api/client'
 import type { ServerEntry } from '../types'
@@ -59,12 +59,23 @@ usePTYEvents(eventWsUrl, serverId, {
         })
       } else {
         var dirs = await getKnownDirs(serverId)
-        for (var dir of dirs) {
-          var list: any[] = await client.listPty(dir) || []
-          list.forEach(function(p: any) {
-            result.push({ directory: dir, ptyID: p.id })
-          })
+        // 并行拉取每个目录的终端（此前是串行 await，N 个目录 = N 次往返，首屏很慢）。
+        // 带并发上限：所有请求都打同一个 bridge 主机，手机底层每主机并发本就有限（iOS 4-6 / Android 5），
+        // 上限既贴合底层、又避免目录攒多时给 bridge 瞬时压力。
+        // ok 区分「请求成功」与「失败」：只有成功且返回空的目录才可安全清理（见下），失败不动以免误删孤儿终端。
+        var perDir = await mapLimit(dirs, 8, async function(dir: string) {
+          try {
+            var list: any[] = await client.listPty(dir) || []
+            return { dir: dir, ptys: list, ok: true }
+          } catch { return { dir: dir, ptys: [] as any[], ok: false } }
+        })
+        for (var r of perDir) {
+          for (var p of r.ptys) result.push({ directory: r.dir, ptyID: p.id })
         }
+        // 自愈清理：请求成功却没有任何终端的目录，从 knownDirs 移除（记录只增不减会导致清单堆积废弃目录）。
+        // 只删「成功空」——请求失败（网络抖动）不删，避免误删仍有孤儿终端的目录。
+        var emptyDirs = perDir.filter(function(r) { return r.ok && r.ptys.length === 0 }).map(function(r) { return r.dir })
+        for (var d of emptyDirs) { removeKnownDir(serverId, d).catch(function() {}) }
       }
 
       setGroups(result)
@@ -113,9 +124,13 @@ usePTYEvents(eventWsUrl, serverId, {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={function() { navigation.goBack() }} style={styles.backBtn}>
-          <Feather name="chevron-left" size={22} color={theme.text} />
-        </TouchableOpacity>
+        {navigation.canGoBack() ? (
+          <TouchableOpacity onPress={function() { navigation.goBack() }} style={styles.backBtn}>
+            <Feather name="chevron-left" size={22} color={theme.text} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerLead} />
+        )}
         <Text style={[styles.title, { color: theme.text }]}>Terminal</Text>
         <TouchableOpacity style={styles.newBtn} onPress={handleNew}>
           <Feather name="plus" size={20} color={theme.accent} />
@@ -197,6 +212,21 @@ usePTYEvents(eventWsUrl, serverId, {
   )
 }
 
+// 带并发上限的并行 map：最多同时 limit 个任务在飞，结果按输入顺序返回。
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  var results: R[] = new Array(items.length)
+  var next = 0
+  async function worker() {
+    while (next < items.length) {
+      var i = next++
+      results[i] = await fn(items[i])
+    }
+  }
+  var workers = Array.from({ length: Math.min(limit, items.length) }, worker)
+  await Promise.all(workers)
+  return results
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
@@ -207,6 +237,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
   },
   backBtn: { padding: 4, marginRight: 4 },
+  headerLead: { width: 8 },
   title: { fontSize: 17, fontWeight: '600', flex: 1 },
   newBtn: { padding: 8 },
   list: { padding: 16 },

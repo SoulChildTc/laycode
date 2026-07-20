@@ -115,6 +115,16 @@ export default function FeedScreen({ navigation, client, themeMode, config }: Pr
       const byId = new Map<string, GlobalSession>()
       for (const s of mains) byId.set(s.id, s)
 
+      // 连接状态不能只靠全局 handler（它是单例，会被其它 tab 覆盖）：这里按本次数据源的真实结果自判。
+      // 拿到数据 = 通；一条都没有可能是真空、也可能是断连（listRecentSessions 断连时 soft 吞错返回 []），
+      // 故空结果时显式 verify 一次，区分「真空 online」与「断连 offline/unauthorized」。
+      if (mains.length > 0) {
+        setConnState('online')
+      } else {
+        const v = await client.verify()
+        setConnState(v === 'ok' ? 'online' : v)
+      }
+
       // ② pending 权限/问题 + busy 状态：都按目录查。目录集合取自最近会话（去重）——
       // 有 pending / 正在跑的会话必然是近期活跃的，一定在这批里，故目录集合足以覆盖。
       const dirs = Array.from(new Set(mains.map((s: any) => s.directory).filter(Boolean)))
@@ -241,13 +251,22 @@ export default function FeedScreen({ navigation, client, themeMode, config }: Pr
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}
           ListHeaderComponent={
             <View style={styles.head}>
-              <Text style={[styles.date, { color: theme.textTertiary }]}>{todayLabel()}</Text>
+              <View style={styles.headTop}>
+                <Text style={[styles.brand, { color: theme.textTertiary }]}>LayCode</Text>
+                <Text style={[styles.date, { color: theme.textTertiary }]}>{todayLabel()}</Text>
+              </View>
               <Text style={[styles.title, { color: theme.text }]}>今天</Text>
               <Text style={[styles.summary, { color: theme.textSecondary }]}>
                 {attentionCount > 0 && <Text style={{ color: theme.warning, fontWeight: '700' }}>{attentionCount} 个</Text>}
                 {attentionCount > 0 ? ' 要你处理' : '暂无待处理'}
                 {runningCount > 0 && <Text> · <Text style={{ color: theme.accent, fontWeight: '700' }}>{runningCount} 个</Text>在跑</Text>}
               </Text>
+              {connState !== 'online' && (
+                <View style={styles.connWarn}>
+                  <View style={[styles.connDot, { backgroundColor: connColor(theme, connState) }]} />
+                  <Text style={[styles.connText, { color: connColor(theme, connState) }]}>{connLabel(connState)}</Text>
+                </View>
+              )}
             </View>
           }
           renderItem={({ item }) => {
@@ -264,13 +283,27 @@ export default function FeedScreen({ navigation, client, themeMode, config }: Pr
             return renderCard(item)
           }}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyIcon}>✅</Text>
-              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>今天没有需要处理的事</Text>
-              <Text style={[styles.emptyHint, { color: theme.textTertiary }]}>去「项目」里开始新对话</Text>
-            </View>
+            connState !== 'online' ? (
+              <View style={styles.empty}>
+                <View style={[styles.emptyIconWrap, { backgroundColor: withAlpha(connColor(theme, connState), 0.12) }]}>
+                  <Feather name={connState === 'unauthorized' ? 'key' : 'wifi-off'} size={26} color={connColor(theme, connState)} />
+                </View>
+                <Text style={[styles.emptyText, { color: theme.text }]}>{connLabel(connState)}</Text>
+                <Text style={[styles.emptyHint, { color: theme.textSecondary }]}>
+                  {connState === 'unauthorized' ? '密钥已失效，去设置里重新连接' : '连不上服务，检查电脑上的 bridge 是否在运行'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.empty}>
+                <View style={[styles.emptyIconWrap, { backgroundColor: withAlpha(theme.success, 0.12) }]}>
+                  <Feather name="check" size={26} color={theme.success} />
+                </View>
+                <Text style={[styles.emptyText, { color: theme.text }]}>今天没有需要处理的事</Text>
+                <Text style={[styles.emptyHint, { color: theme.textSecondary }]}>去「项目」里开始新对话</Text>
+              </View>
+            )
           }
-          contentContainerStyle={[{ paddingBottom: 40 }, items.length === 0 && { flexGrow: 1, justifyContent: 'center' }]}
+          contentContainerStyle={{ paddingBottom: 40 }}
         />
       )}
 
@@ -509,14 +542,28 @@ function iconColor(name: string): string {
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
   return ICON_COLORS[h % ICON_COLORS.length]
 }
+// 首页只在异常时提示连接状态（online 不渲染）：offline=未连接、unauthorized=密钥失效。
+function connLabel(state: ConnState): string {
+  if (state === 'unauthorized') return '密钥失效'
+  if (state === 'offline') return '未连接'
+  return ''
+}
+function connColor(theme: any, state: ConnState): string {
+  return state === 'unauthorized' ? theme.warning : theme.error
+}
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   // 头部：与卡片共用 20 的左右边距，标题左缘对齐
   head: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 2 },
+  headTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  brand: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
   date: { fontSize: 12, letterSpacing: 0.5 },
   title: { fontSize: 26, fontWeight: '800', letterSpacing: -0.5, marginTop: 3 },
   summary: { fontSize: 12.5, marginTop: 7, lineHeight: 18 },
+  connWarn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  connDot: { width: 6, height: 6, borderRadius: 3 },
+  connText: { fontSize: 12, fontWeight: '600' },
   // 分组标题：上方留 24 呼吸感，与卡片同边距
   group: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 24, marginBottom: 10, paddingHorizontal: 20 },
   gdot: { width: 6, height: 6, borderRadius: 3 },
@@ -547,8 +594,8 @@ const styles = StyleSheet.create({
   op: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   opText: { fontSize: 12.5, fontWeight: '700' },
   rejectInput: { borderWidth: 1, borderRadius: 9, padding: 11, fontSize: 13, marginTop: 10, minHeight: 44, lineHeight: 19 },
-  empty: { alignItems: 'center' },
-  emptyIcon: { fontSize: 40, marginBottom: 12 },
-  emptyText: { fontSize: 16, marginBottom: 4 },
-  emptyHint: { fontSize: 13, textAlign: 'center' },
+  empty: { alignItems: 'center', paddingTop: 72, paddingHorizontal: 40 },
+  emptyIconWrap: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyText: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
+  emptyHint: { fontSize: 13, textAlign: 'center', lineHeight: 19 },
 })

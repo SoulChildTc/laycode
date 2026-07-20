@@ -26,7 +26,7 @@ interface Props {
   config: ServerEntry
 }
 
-export default function WorkspaceScreen({ route, navigation, client, themeMode, config }: Props) {
+export default function SessionListScreen({ route, navigation, client, themeMode, config }: Props) {
   const { directory, name } = route.params || {}
   const theme = getTheme(themeMode)
   const [sessions, setSessions] = useState<Session[]>([])
